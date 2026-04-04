@@ -1,18 +1,7 @@
 {
   "framework": "nextjs",
   "buildCommand": "next build",
-  "devCommand":   "next dev",
+  "devCommand": "next dev",
   "installCommand": "npm install",
-  "outputDirectory": ".next",
-  "env": {
-    "NEXT_PUBLIC_SUPABASE_URL":      "@supabase_url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key",
-    "SUPABASE_SERVICE_ROLE_KEY":     "@supabase_service_role",
-    "NEXT_PUBLIC_APP_URL":           "@app_url",
-    "NEXT_PUBLIC_GCASH_NUMBER":      "@gcash_number",
-    "NEXT_PUBLIC_GCASH_NAME":        "@gcash_name",
-    "NEXT_PUBLIC_BANK_NAME":         "@bank_name",
-    "NEXT_PUBLIC_BANK_ACCOUNT_NAME": "@bank_account_name",
-    "NEXT_PUBLIC_BANK_ACCOUNT_NUMBER": "@bank_account_number"
-  }
+  "outputDirectory": ".next"
 }
