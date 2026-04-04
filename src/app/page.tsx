@@ -239,12 +239,6 @@ export default async function HomePage() {
         </footer>
       </main>
 
-      
-        
-        
-        
-        }
-      `}</style>
     </>
   );
 }
