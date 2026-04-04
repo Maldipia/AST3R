@@ -163,3 +163,12 @@ body {
 .text-orange { color: var(--orange); }
 .bg-cream    { background-color: var(--cream); }
 .border-orange { border-color: var(--orange); }
+
+/* ── Marquee animation ─────────────────────────────────── */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-33.33%); }
+}
+.animate-marquee {
+  animation: marquee 20s linear infinite;
+}

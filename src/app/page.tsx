@@ -239,10 +239,10 @@ export default async function HomePage() {
         </footer>
       </main>
 
-      <style jsx global>{`
-        @keyframes marquee {
-          from { transform: translateX(0); }
-          to   { transform: translateX(-33.33%); }
+      
+        
+        
+        
         }
       `}</style>
     </>
