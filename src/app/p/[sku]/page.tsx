@@ -41,7 +41,7 @@ export default async function ProductPage({
   // Single optimized query using the DB function
   const { data: product, error } = await supabase
     .rpc('get_product_with_stock', { p_sku: sku })
-    .single();
+    .single() as { data: Record<string, any> | null; error: any };
 
   if (error || !product) notFound();
 
