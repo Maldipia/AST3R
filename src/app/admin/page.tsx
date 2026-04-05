@@ -29,7 +29,7 @@ type Order = {
 };
 
 const PAGE_SIZE  = 50;
-const CATEGORIES = ['Tops','Bottoms','Dresses','Outerwear','Accessories','Sets'];
+const CATEGORIES = ['Tops','Bottoms','Dresses','Outerwear','Accessories','Sets','Kids'];
 const ALL_SIZES  = ['XS','S','M','L','XL','XXL','Free Size'];
 const APP_URL    = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
 
@@ -270,7 +270,7 @@ function EditProductModal({ product, onClose, onSaved }: {
   onSaved: () => void;
 }) {
   const ALL_SIZES  = ['XS','S','M','L','XL','XXL','Free Size'];
-  const CATEGORIES = ['Tops','Bottoms','Dresses','Outerwear','Accessories','Sets'];
+  const CATEGORIES = ['Tops','Bottoms','Dresses','Outerwear','Accessories','Sets','Kids'];
 
   const [form, setForm] = useState({
     name:        product.name,
@@ -323,49 +323,76 @@ function EditProductModal({ product, onClose, onSaved }: {
   };
 
   const save = async () => {
-    if (!form.name.trim()) { toast.error('Name required'); return; }
+    if (!form.name.trim()) { toast.error('Name is required'); return; }
     const price = parseFloat(form.price);
-    if (isNaN(price)) { toast.error('Invalid price'); return; }
+    if (isNaN(price) || price < 0) { toast.error('Enter a valid price'); return; }
 
     setSaving(true);
-    const t = toast.loading('Saving…');
+    const t = toast.loading('Saving changes…');
     try {
-      // Update product
-      const { error: pe } = await supabase.from('products').update({
-        name:        form.name.trim(),
-        description: form.description.trim(),
-        price,
-        category:    form.category,
-        status:      form.status,
-      }).eq('id', product.id);
-      if (pe) throw pe;
+      // Check session is still active
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.dismiss(t);
+        toast.error('Session expired — please log in again');
+        setSaving(false);
+        return;
+      }
+
+      // Update product — use .select() to confirm row was updated
+      const { data: updatedRows, error: pe } = await supabase
+        .from('products')
+        .update({
+          name:        form.name.trim(),
+          description: form.description.trim(),
+          price,
+          category:    form.category,
+          status:      form.status,
+        })
+        .eq('id', product.id)
+        .select();
+
+      if (pe) throw new Error(`Product update failed: ${pe.message}`);
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('No rows updated — check your admin permissions or try logging out and back in');
+      }
 
       // Update plain inventory (if no sizes)
       if (!hasSizes) {
-        const qty = parseInt(form.stock);
-        if (!isNaN(qty)) await supabase.from('inventory').update({ quantity: qty }).eq('sku', product.sku);
+        const qty = parseInt(form.stock) || 0;
+        const { error: ie } = await supabase
+          .from('inventory')
+          .update({ quantity: qty })
+          .eq('sku', product.sku);
+        if (ie) console.warn('Inventory update warning:', ie.message);
       }
 
       // Upsert size inventory
       for (const [size, qty] of Object.entries(sizeStock)) {
-        await supabase.from('size_inventory').upsert(
-          { sku: product.sku, size, quantity: qty },
-          { onConflict: 'sku,size' }
-        );
+        const { error: se } = await supabase
+          .from('size_inventory')
+          .upsert({ sku: product.sku, size, quantity: qty }, { onConflict: 'sku,size' });
+        if (se) console.warn(`Size ${size} upsert warning:`, se.message);
       }
 
       // Remove deleted sizes
-      const removedSizes = (product.size_inventory || [])
-        .map(si => si.size)
-        .filter(s => sizeStock[s] === undefined);
+      const originalSizes = (product.size_inventory || []).map(si => si.size);
+      const removedSizes  = originalSizes.filter(s => sizeStock[s] === undefined);
       for (const size of removedSizes) {
         await supabase.from('size_inventory').delete().eq('sku', product.sku).eq('size', size);
       }
 
-      toast.dismiss(t); toast.success(`${product.sku} saved ✅`);
-      onSaved(); onClose();
-    } catch (e: any) { toast.dismiss(t); toast.error(e.message || 'Save failed'); }
-    finally { setSaving(false); }
+      toast.dismiss(t);
+      toast.success(`✅ ${product.sku} — ${form.name} saved!`);
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      toast.dismiss(t);
+      toast.error(e.message || 'Something went wrong — please try again');
+      console.error('Save error:', e);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -533,7 +560,7 @@ function BulkEditModal({ products, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const CATEGORIES = ['Tops','Bottoms','Dresses','Outerwear','Accessories','Sets'];
+  const CATEGORIES = ['Tops','Bottoms','Dresses','Outerwear','Accessories','Sets','Kids'];
   const [rows, setRows] = useState(() =>
     products.map(p => ({
       id:          p.id,
