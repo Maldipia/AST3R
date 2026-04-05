@@ -263,6 +263,213 @@ function SizeStockCell({ product, onUpdated }: {
   );
 }
 
+// ── Bulk Edit Modal ────────────────────────────────────────────
+function BulkEditModal({ products, onClose, onSaved }: {
+  products: Product[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const CATEGORIES = ['Tops','Bottoms','Dresses','Outerwear','Accessories','Sets'];
+  const [rows, setRows] = useState(() =>
+    products.map(p => ({
+      id:          p.id,
+      sku:         p.sku,
+      name:        p.name,
+      price:       String(p.price),
+      category:    p.category,
+      status:      p.status,
+      stock:       String(p.inventory?.[0]?.quantity ?? 0),
+      description: p.description || '',
+      dirty:       false,
+    }))
+  );
+  const [saving, setSaving] = useState(false);
+  const [saved,  setSaved]  = useState<Set<string>>(new Set());
+
+  const update = (id: string, field: string, value: string) => {
+    setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value, dirty: true } : r));
+  };
+
+  const saveAll = async () => {
+    const dirty = rows.filter(r => r.dirty);
+    if (!dirty.length) { toast('Nothing changed'); return; }
+    setSaving(true);
+    const t = toast.loading(`Saving ${dirty.length} products…`);
+    let ok = 0;
+    for (const r of dirty) {
+      const price = parseFloat(r.price);
+      const stock = parseInt(r.stock);
+      if (isNaN(price)) { toast.error(`${r.sku}: invalid price`); continue; }
+      const { error: pe } = await supabase.from('products').update({
+        name: r.name.trim(),
+        price,
+        category: r.category,
+        status:   r.status,
+        description: r.description,
+      }).eq('id', r.id);
+      if (!pe && !isNaN(stock)) {
+        await supabase.from('inventory').update({ quantity: stock }).eq('sku', r.sku);
+      }
+      if (!pe) {
+        ok++;
+        setSaved(prev => new Set([...prev, r.id]));
+      }
+    }
+    toast.dismiss(t);
+    toast.success(`✅ ${ok} products saved!`);
+    setSaving(false);
+    setRows(prev => prev.map(r => ({ ...r, dirty: false })));
+    onSaved();
+  };
+
+  const dirtyCount = rows.filter(r => r.dirty).length;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col" onClick={onClose}>
+      <div className="flex-1 flex flex-col bg-white m-2 sm:m-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+        
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-light bg-brand-black text-white flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <h2 className="font-serif text-lg tracking-wide">Bulk Edit — {products.length} Products</h2>
+            {dirtyCount > 0 && (
+              <span className="text-xs bg-brand-orange px-2 py-1">{dirtyCount} unsaved changes</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={onClose} className="text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
+            <button
+              onClick={saveAll}
+              disabled={saving || dirtyCount === 0}
+              className="bg-brand-orange text-white text-xs font-medium px-5 py-2 hover:bg-orange-600 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : `Save ${dirtyCount > 0 ? dirtyCount : 'All'} Changes`}
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-auto flex-1">
+          <table className="w-full text-sm border-collapse min-w-[900px]">
+            <thead className="bg-brand-cream sticky top-0 z-10">
+              <tr>
+                {['SKU','Product Name','Category','Price (PHP)','Stock','Status','Description'].map(h => (
+                  <th key={h} className="text-left px-4 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray border-b border-brand-light whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={row.id}
+                  className={`border-b border-brand-light transition-colors ${
+                    saved.has(row.id) ? 'bg-green-50' :
+                    row.dirty ? 'bg-orange-50' : i % 2 === 0 ? 'bg-white' : 'bg-[#FAFAF8]'
+                  }`}
+                >
+                  {/* SKU — read only */}
+                  <td className="px-4 py-2 font-mono text-xs text-brand-gray whitespace-nowrap">
+                    {row.sku}
+                    {row.dirty && <span className="ml-1 text-brand-orange">●</span>}
+                  </td>
+
+                  {/* Name */}
+                  <td className="px-2 py-1">
+                    <input
+                      type="text"
+                      value={row.name}
+                      onChange={e => update(row.id, 'name', e.target.value)}
+                      className="w-full min-w-[180px] border border-transparent hover:border-brand-light focus:border-brand-orange px-2 py-1.5 text-sm bg-transparent focus:outline-none focus:bg-white transition-colors"
+                    />
+                  </td>
+
+                  {/* Category */}
+                  <td className="px-2 py-1">
+                    <select
+                      value={row.category}
+                      onChange={e => update(row.id, 'category', e.target.value)}
+                      className="border border-transparent hover:border-brand-light focus:border-brand-orange px-2 py-1.5 text-xs bg-transparent focus:outline-none focus:bg-white"
+                    >
+                      {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </td>
+
+                  {/* Price */}
+                  <td className="px-2 py-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-brand-gray">₱</span>
+                      <input
+                        type="number"
+                        value={row.price}
+                        min="0"
+                        step="0.01"
+                        onChange={e => update(row.id, 'price', e.target.value)}
+                        className="w-24 border border-transparent hover:border-brand-light focus:border-brand-orange px-2 py-1.5 text-sm bg-transparent focus:outline-none focus:bg-white"
+                      />
+                    </div>
+                  </td>
+
+                  {/* Stock */}
+                  <td className="px-2 py-1">
+                    <input
+                      type="number"
+                      value={row.stock}
+                      min="0"
+                      onChange={e => update(row.id, 'stock', e.target.value)}
+                      className={`w-20 border border-transparent hover:border-brand-light focus:border-brand-orange px-2 py-1.5 text-sm bg-transparent focus:outline-none focus:bg-white font-medium ${
+                        parseInt(row.stock) <= 0 ? 'text-red-500' :
+                        parseInt(row.stock) <= 5 ? 'text-orange-500' : 'text-green-600'
+                      }`}
+                    />
+                  </td>
+
+                  {/* Status */}
+                  <td className="px-2 py-1">
+                    <select
+                      value={row.status}
+                      onChange={e => update(row.id, 'status', e.target.value)}
+                      className={`border border-transparent hover:border-brand-light focus:border-brand-orange px-2 py-1.5 text-xs bg-transparent focus:outline-none focus:bg-white font-medium ${
+                        row.status === 'active' ? 'text-green-600' : 'text-brand-gray'
+                      }`}
+                    >
+                      <option value="active">active</option>
+                      <option value="inactive">inactive</option>
+                    </select>
+                  </td>
+
+                  {/* Description */}
+                  <td className="px-2 py-1">
+                    <input
+                      type="text"
+                      value={row.description}
+                      onChange={e => update(row.id, 'description', e.target.value)}
+                      placeholder="Add description…"
+                      className="w-full min-w-[200px] border border-transparent hover:border-brand-light focus:border-brand-orange px-2 py-1.5 text-xs bg-transparent focus:outline-none focus:bg-white placeholder:text-brand-light"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-3 border-t border-brand-light bg-brand-cream flex-shrink-0 text-xs text-brand-gray">
+          <span>💡 Click any cell to edit · Orange row = unsaved · Green row = saved</span>
+          <button
+            onClick={saveAll}
+            disabled={saving || dirtyCount === 0}
+            className="bg-brand-orange text-white px-6 py-2 text-xs font-medium hover:bg-orange-600 disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : `✅ Save ${dirtyCount} Changes`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── CSV Upload Modal ───────────────────────────────────────────
 function CSVModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [rows,    setRows]    = useState<any[]>([]);
@@ -600,6 +807,7 @@ export default function AdminPage() {
   const [search,      setSearch]      = useState('');
   const [page,        setPage]        = useState(0);
   const [showCSV,     setShowCSV]     = useState(false);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [qrSku,       setQrSku]       = useState('');
   const [qrProduct,   setQrProduct]   = useState<Product | null>(null);
   const [genZip,      setGenZip]      = useState(false);
@@ -765,6 +973,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-[#F5F5F3]">
       {showCSV && <CSVModal onClose={() => setShowCSV(false)} onDone={loadProducts} />}
+      {showBulkEdit && <BulkEditModal products={products} onClose={() => setShowBulkEdit(false)} onSaved={loadProducts} />}
 
       {/* Header */}
       <header className="bg-brand-black text-brand-white sticky top-0 z-40 border-b border-[#1A1A1A]">
@@ -843,6 +1052,10 @@ export default function AdminPage() {
                 <button onClick={() => setShowCSV(true)}
                   className="border border-brand-black px-4 py-2.5 text-xs font-medium bg-white hover:bg-brand-black hover:text-white transition-colors">
                   📄 CSV Import
+                </button>
+                <button onClick={() => setShowBulkEdit(true)}
+                  className="bg-brand-black text-white px-4 py-2.5 text-xs font-medium hover:bg-brand-orange transition-colors">
+                  ✏️ Edit All
                 </button>
               </div>
             </div>
