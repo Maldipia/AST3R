@@ -35,7 +35,9 @@ export default function PaymentPage() {
     setOrderForm(JSON.parse(formRaw));
   }, [router]);
 
-  const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const subtotal     = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const shippingFee  = orderForm?.shipping_fee ?? 0;
+  const total        = subtotal + shippingFee;
 
   // ── Dropzone ──────────────────────────────────────────────
   const onDrop = useCallback((accepted: File[]) => {
@@ -94,9 +96,13 @@ export default function PaymentPage() {
           customer_name:  orderForm.customer_name,
           contact_number: orderForm.contact_number,
           email:          orderForm.email || null,
-          address_full:   orderForm.address_full,
+          address_full:   `${orderForm.address_full}, ${orderForm.city}`.trim(),
           notes:          orderForm.notes || null,
           total_amount:   total,
+          subtotal:       subtotal,
+          shipping_fee:   shippingFee,
+          region:         orderForm.region_label || orderForm.region_id || null,
+          courier:        orderForm.courier || null,
           status:         'pending',
         })
         .select('id')
@@ -353,8 +359,25 @@ export default function PaymentPage() {
                 <p className="text-xs text-brand-gray leading-relaxed">{orderForm.address_full}</p>
               </div>
 
+              {/* Pricing breakdown */}
+              <div className="border-t border-brand-light pt-3 space-y-2 mb-3">
+                <div className="flex justify-between text-xs text-brand-gray">
+                  <span>Subtotal</span>
+                  <span>{formatPrice(subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-brand-gray">
+                  <span>Shipping ({orderForm?.region_label || 'Standard'})</span>
+                  <span>{formatPrice(shippingFee)}</span>
+                </div>
+                {orderForm?.courier && (
+                  <div className="flex justify-between text-xs text-brand-gray">
+                    <span>Courier</span>
+                    <span>{orderForm.courier}</span>
+                  </div>
+                )}
+              </div>
               {/* Total */}
-              <div className="border-t border-brand-black pt-4 flex justify-between">
+              <div className="border-t border-brand-black pt-3 flex justify-between">
                 <span className="font-medium text-sm">Total</span>
                 <span className="font-serif text-xl font-medium">{formatPrice(total)}</span>
               </div>

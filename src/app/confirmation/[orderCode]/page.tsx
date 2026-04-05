@@ -109,8 +109,23 @@ export default async function ConfirmationPage({
               <p className="text-sm font-medium text-brand-black">{order.customer_name}</p>
             </div>
             <div>
-              <p className="text-xs tracking-widest uppercase text-brand-gray mb-1">Total Amount</p>
-              <p className="text-sm font-medium text-brand-black">{formatPrice(order.total_amount)}</p>
+              <p className="text-xs tracking-widest uppercase text-brand-gray mb-1">Subtotal</p>
+              <p className="text-sm text-brand-black">{formatPrice(order.subtotal || order.total_amount)}</p>
+            </div>
+            <div>
+              <p className="text-xs tracking-widest uppercase text-brand-gray mb-1">Shipping</p>
+              <p className="text-sm text-brand-black">
+                {formatPrice(order.shipping_fee || 0)}
+                {order.region && <span className="text-xs text-brand-gray ml-1">· {order.region}</span>}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs tracking-widest uppercase text-brand-gray mb-1">Courier</p>
+              <p className="text-sm text-brand-black">{order.courier || 'To be assigned'}</p>
+            </div>
+            <div>
+              <p className="text-xs tracking-widest uppercase text-brand-gray mb-1">Total</p>
+              <p className="font-serif text-lg font-medium text-brand-black">{formatPrice(order.total_amount)}</p>
             </div>
             <div className="col-span-2">
               <p className="text-xs tracking-widest uppercase text-brand-gray mb-1">Deliver To</p>

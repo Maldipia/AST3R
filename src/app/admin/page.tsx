@@ -23,7 +23,9 @@ type Product = {
 type Order = {
   id: string; order_code: string; customer_name: string;
   contact_number: string; address_full: string;
-  total_amount: number; status: string; created_at: string;
+  total_amount: number; subtotal: number; shipping_fee: number;
+  region: string; courier: string;
+  status: string; created_at: string;
   payments: { payment_method: string; status: string; payment_proof_url?: string }[];
   order_items: { sku: string; quantity: number; price: number }[];
 };
@@ -1540,15 +1542,25 @@ export default function AdminPage() {
                       <p className="text-xs text-brand-gray">{formatDate(order.created_at)}</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-4 border-b border-brand-light text-sm">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-brand-light text-sm">
                     <div>
                       <p className="text-xs text-brand-gray">Customer</p>
-                      <p className="font-medium">{order.customer_name}</p>
+                      <p className="font-medium text-sm">{order.customer_name}</p>
                       <p className="text-xs text-brand-gray">{order.contact_number}</p>
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="col-span-1 sm:col-span-1">
                       <p className="text-xs text-brand-gray">Address</p>
-                      <p className="text-xs">{order.address_full}</p>
+                      <p className="text-xs leading-relaxed">{order.address_full}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-brand-gray">Shipping</p>
+                      <p className="text-xs font-medium text-brand-black">{formatPrice(order.shipping_fee || 0)}</p>
+                      <p className="text-xs text-brand-gray">{order.region || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-brand-gray">Courier</p>
+                      <p className="text-xs font-medium text-brand-black">{order.courier || 'TBD'}</p>
+                      <p className="text-xs text-brand-gray">Subtotal: {formatPrice(order.subtotal || order.total_amount)}</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-4 items-center">
