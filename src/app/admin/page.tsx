@@ -1,189 +1,220 @@
 // src/app/admin/page.tsx
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter }  from 'next/navigation';
-import Image          from 'next/image';
-import toast          from 'react-hot-toast';
-import { supabase }   from '@/lib/supabase';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import Image         from 'next/image';
+import toast         from 'react-hot-toast';
+import { supabase }  from '@/lib/supabase';
 import { formatPrice, formatDate } from '@/lib/utils';
 
-type Tab = 'orders' | 'products' | 'inventory' | 'qr';
+// ── Types ──────────────────────────────────────────────────────
+type Tab = 'orders' | 'products' | 'qr';
 
-type OrderRow = {
+type Product = {
+  id: string; sku: string; name: string; description: string;
+  price: number; currency: string; image_url: string;
+  category: string; status: string; created_at: string;
+  inventory: { quantity: number }[];
+};
+
+type Order = {
   id: string; order_code: string; customer_name: string;
-  contact_number: string; email: string; address_full: string;
+  contact_number: string; address_full: string;
   total_amount: number; status: string; created_at: string;
   payments: { payment_method: string; status: string; payment_proof_url?: string }[];
   order_items: { sku: string; quantity: number; price: number }[];
 };
 
-type ProductRow = {
-  id: string; sku: string; name: string; price: number;
-  category: string; status: string; image_url: string;
-  inventory: { quantity: number }[];
-};
+const PAGE_SIZE = 50;
 
-// ── Image Uploader ────────────────────────────────────────────
-function ImageUploader({ product, onUploaded }: { product: ProductRow; onUploaded: () => void }) {
+// ── Inline Image Upload Cell ───────────────────────────────────
+function ImageCell({ product, onUploaded }: { product: Product; onUploaded: (id: string, url: string) => void }) {
   const [uploading, setUploading] = useState(false);
-  const [preview,   setPreview]   = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const ref = useRef<HTMLInputElement>(null);
 
-  const handleFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) { toast.error('Image files only'); return; }
-    if (file.size > 10 * 1024 * 1024)   { toast.error('Max 10MB'); return; }
-    setPreview(URL.createObjectURL(file));
+  const upload = async (file: File) => {
+    if (!file.type.startsWith('image/')) return;
     setUploading(true);
-    const t = toast.loading('Uploading…');
+    const t = toast.loading(`Uploading…`);
     try {
-      const ext      = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `${product.sku}-${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from('product-images').upload(fileName, file, { cacheControl: '3600', upsert: true });
-      if (upErr) throw new Error(upErr.message);
-      const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fileName);
-      const { error: updErr } = await supabase.from('products').update({ image_url: publicUrl }).eq('id', product.id);
-      if (updErr) throw new Error(updErr.message);
-      toast.dismiss(t); toast.success('Image saved! ✅'); onUploaded();
-    } catch (err: any) {
-      toast.dismiss(t); toast.error(err.message || 'Upload failed'); setPreview(null);
-    } finally { setUploading(false); }
+      const ext = file.name.split('.').pop() || 'jpg';
+      const fn  = `${product.sku}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('product-images').upload(fn, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fn);
+      await supabase.from('products').update({ image_url: publicUrl }).eq('id', product.id);
+      onUploaded(product.id, publicUrl);
+      toast.dismiss(t); toast.success('Image saved ✅');
+    } catch (e: any) { toast.dismiss(t); toast.error(e.message); }
+    finally { setUploading(false); }
   };
 
-  const currentImage = preview || product.image_url;
-
   return (
-    <div className="mt-3">
-      {currentImage && (
-        <div className="relative w-full h-32 mb-2 overflow-hidden bg-brand-cream">
-          <Image src={currentImage} alt={product.name} fill className="object-cover" sizes="300px" />
-          {uploading && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
-        </div>
-      )}
-      <div
-        onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-        onDragOver={(e) => e.preventDefault()}
-        onClick={() => !uploading && inputRef.current?.click()}
-        className="border-2 border-dashed border-brand-light p-3 text-center cursor-pointer hover:border-brand-orange transition-all"
-      >
-        <input ref={inputRef} type="file" accept="image/*" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-        <p className="text-xs text-brand-gray">
-          {uploading ? 'Uploading…' : '📸 Click or drag to upload image'}
-        </p>
+    <div className="flex items-center gap-2">
+      {/* Thumbnail */}
+      <div className="w-10 h-10 bg-brand-cream flex-shrink-0 overflow-hidden relative cursor-pointer border border-brand-light hover:border-brand-orange transition-colors"
+        onClick={() => ref.current?.click()} title="Click to upload image">
+        {product.image_url
+          ? <Image src={product.image_url} alt="" fill className="object-cover" sizes="40px" />
+          : <span className="absolute inset-0 flex items-center justify-center text-lg">{uploading ? '⏳' : '📸'}</span>
+        }
+        {uploading && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>}
       </div>
+      <input ref={ref} type="file" accept="image/*" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
     </div>
   );
 }
 
-// ── Add Product Modal ─────────────────────────────────────────
-function AddProductModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ sku: '', name: '', description: '', price: '', category: 'Tops', image_url: '' });
-  const [imageFile, setImageFile]     = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [saving, setSaving]           = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+// ── CSV Bulk Upload ────────────────────────────────────────────
+function CSVUploadModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [rows,    setRows]    = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [errors,  setErrors]  = useState<string[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleImage = (file: File) => {
-    if (!file.type.startsWith('image/')) { toast.error('Image files only'); return; }
-    setImageFile(file); setImagePreview(URL.createObjectURL(file));
+  const parseCSV = (text: string) => {
+    const lines = text.trim().split('\n');
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    const parsed = lines.slice(1).map((line, i) => {
+      const vals = line.split(',').map(v => v.trim().replace(/"/g, ''));
+      const row: any = {};
+      headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });
+      return row;
+    }).filter(r => r.sku);
+    setRows(parsed);
+    setErrors([]);
   };
 
-  const handleSubmit = async () => {
-    if (!form.sku.trim())  { toast.error('SKU required'); return; }
-    if (!form.name.trim()) { toast.error('Name required'); return; }
-    if (!form.price || isNaN(parseFloat(form.price))) { toast.error('Valid price required'); return; }
-    setSaving(true);
-    const t = toast.loading('Saving product…');
+  const validate = (): string[] => {
+    const errs: string[] = [];
+    rows.forEach((r, i) => {
+      if (!r.sku)  errs.push(`Row ${i+2}: SKU missing`);
+      if (!r.name) errs.push(`Row ${i+2}: Name missing`);
+      if (isNaN(parseFloat(r.price))) errs.push(`Row ${i+2}: Invalid price "${r.price}"`);
+    });
+    return errs;
+  };
+
+  const handleImport = async () => {
+    const errs = validate();
+    if (errs.length) { setErrors(errs); return; }
+    setLoading(true);
+    const t = toast.loading(`Importing ${rows.length} products…`);
+    let success = 0, fail = 0;
     try {
-      let imageUrl = form.image_url;
-      if (imageFile) {
-        const ext = imageFile.name.split('.').pop() || 'jpg';
-        const fn  = `${form.sku.trim().toUpperCase()}-${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('product-images').upload(fn, imageFile, { upsert: true });
-        if (upErr) throw new Error(upErr.message);
-        const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fn);
-        imageUrl = publicUrl;
+      for (const r of rows) {
+        const sku = r.sku.trim().toUpperCase();
+        const { error: pe } = await supabase.from('products').upsert({
+          sku, name: r.name, description: r.description || '',
+          price: parseFloat(r.price), currency: 'PHP',
+          image_url: r.image_url || '', category: r.category || 'Tops', status: 'active',
+        }, { onConflict: 'sku' });
+        if (pe) { fail++; continue; }
+        await supabase.from('inventory').upsert({ sku, quantity: parseInt(r.stock) || 0 }, { onConflict: 'sku' });
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
+        await supabase.from('qr_links').upsert({ sku, qr_url: `${appUrl}/p/${sku}`, scans: 0 }, { onConflict: 'sku' });
+        success++;
       }
-      const sku = form.sku.trim().toUpperCase();
-      const { error: prodErr } = await supabase.from('products').insert({
-        sku, name: form.name.trim(), description: form.description.trim(),
-        price: parseFloat(form.price), category: form.category,
-        currency: 'PHP', image_url: imageUrl, status: 'active',
-      });
-      if (prodErr) throw new Error(prodErr.message);
-      await supabase.from('inventory').insert({ sku, quantity: 0 });
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
-      await supabase.from('qr_links').insert({ sku, qr_url: `${appUrl}/p/${sku}`, scans: 0 });
-      toast.dismiss(t); toast.success('Product added! ✅'); onSaved(); onClose();
-    } catch (err: any) {
-      toast.dismiss(t); toast.error(err.message || 'Failed');
-    } finally { setSaving(false); }
+      toast.dismiss(t);
+      toast.success(`✅ Imported ${success} products${fail ? `, ${fail} failed` : ''}`);
+      onDone(); onClose();
+    } catch (e: any) { toast.dismiss(t); toast.error(e.message); }
+    finally { setLoading(false); }
+  };
+
+  const downloadTemplate = () => {
+    const csv = 'sku,name,description,price,stock,image_url,category\nAST-TOP-007,Sample Top,Description here,1200,25,,Tops';
+    const a = document.createElement('a');
+    a.href = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
+    a.download = 'ast3r-products-template.csv';
+    a.click();
   };
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-brand-white w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-light">
-          <h2 className="font-serif text-xl">Add New Product</h2>
+      <div className="bg-brand-white w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-light flex-shrink-0">
+          <h2 className="font-serif text-xl">Bulk CSV Import</h2>
           <button onClick={onClose} className="text-brand-gray hover:text-brand-black text-xl">✕</button>
         </div>
-        <div className="p-6 space-y-5">
-          {/* Image */}
-          <div>
-            <label className="input-label">Product Image</label>
-            <div onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleImage(f); }}
-              onDragOver={(e) => e.preventDefault()} onClick={() => inputRef.current?.click()}
-              className="border-2 border-dashed border-brand-light p-6 text-center cursor-pointer hover:border-brand-orange transition-all">
-              <input ref={inputRef} type="file" accept="image/*" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImage(f); }} />
-              {imagePreview ? (
-                <div className="relative w-full h-48">
-                  <Image src={imagePreview} alt="Preview" fill className="object-contain" sizes="400px" />
-                </div>
-              ) : (
-                <><p className="text-3xl mb-2">📸</p><p className="text-sm text-brand-gray">Click or drag image here</p></>
-              )}
-            </div>
-            <input type="text" placeholder="Or paste image URL" value={form.image_url}
-              onChange={(e) => setForm({ ...form, image_url: e.target.value })}
-              className="input-field mt-2 text-xs" />
-          </div>
-          <div>
-            <label className="input-label">SKU *</label>
-            <input type="text" placeholder="e.g. AST-TOP-003" value={form.sku}
-              onChange={(e) => setForm({ ...form, sku: e.target.value.toUpperCase() })} className="input-field font-mono" />
-          </div>
-          <div>
-            <label className="input-label">Product Name *</label>
-            <input type="text" placeholder="e.g. Linen Blazer" value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" />
-          </div>
-          <div>
-            <label className="input-label">Description</label>
-            <textarea rows={3} placeholder="Describe the product…" value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })} className="input-field resize-none" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+
+        <div className="p-6 overflow-y-auto flex-1 space-y-5">
+          {/* Template download */}
+          <div className="bg-brand-cream p-4 flex items-center justify-between">
             <div>
-              <label className="input-label">Price (PHP) *</label>
-              <input type="number" min="0" step="0.01" placeholder="0.00" value={form.price}
-                onChange={(e) => setForm({ ...form, price: e.target.value })} className="input-field" />
+              <p className="text-sm font-medium text-brand-black">Required columns:</p>
+              <p className="font-mono text-xs text-brand-gray mt-1">sku, name, description, price, stock, image_url, category</p>
             </div>
-            <div>
-              <label className="input-label">Category</label>
-              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input-field">
-                {['Tops', 'Bottoms', 'Dresses', 'Outerwear', 'Accessories', 'Sets'].map(c => <option key={c}>{c}</option>)}
-              </select>
+            <button onClick={downloadTemplate} className="btn-outline py-2 px-4 text-xs whitespace-nowrap">⬇ Template</button>
+          </div>
+
+          {/* File upload */}
+          <div>
+            <label className="input-label">Upload CSV File</label>
+            <div className="border-2 border-dashed border-brand-light p-6 text-center cursor-pointer hover:border-brand-orange transition-all"
+              onClick={() => fileRef.current?.click()}>
+              <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const r = new FileReader();
+                  r.onload = ev => parseCSV(ev.target?.result as string);
+                  r.readAsText(f);
+                }} />
+              <p className="text-brand-gray text-sm">📄 Click to upload CSV file</p>
+              <p className="text-brand-light text-xs mt-1">Max 1000 rows recommended</p>
             </div>
           </div>
-          <button onClick={handleSubmit} disabled={saving} className="btn-primary w-full">
-            {saving ? 'Saving…' : 'Add Product'}
+
+          {/* Errors */}
+          {errors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 p-4">
+              <p className="text-red-700 font-medium text-sm mb-2">⚠️ Fix these errors first:</p>
+              {errors.slice(0, 10).map((e, i) => <p key={i} className="text-red-600 text-xs">{e}</p>)}
+              {errors.length > 10 && <p className="text-red-500 text-xs mt-1">…and {errors.length - 10} more</p>}
+            </div>
+          )}
+
+          {/* Preview table */}
+          {rows.length > 0 && (
+            <div>
+              <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-3">
+                Preview — {rows.length} products to import
+              </p>
+              <div className="overflow-x-auto border border-brand-light">
+                <table className="w-full text-xs">
+                  <thead className="bg-brand-cream">
+                    <tr>{['SKU','Name','Price','Stock','Category'].map(h => (
+                      <th key={h} className="text-left px-3 py-2 font-medium text-brand-gray uppercase tracking-wide">{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody className="divide-y divide-brand-light">
+                    {rows.slice(0, 20).map((r, i) => (
+                      <tr key={i} className="hover:bg-brand-cream">
+                        <td className="px-3 py-2 font-mono">{r.sku}</td>
+                        <td className="px-3 py-2">{r.name}</td>
+                        <td className="px-3 py-2">₱{r.price}</td>
+                        <td className="px-3 py-2">{r.stock || 0}</td>
+                        <td className="px-3 py-2">{r.category || 'Tops'}</td>
+                      </tr>
+                    ))}
+                    {rows.length > 20 && (
+                      <tr><td colSpan={5} className="px-3 py-2 text-brand-gray italic">…and {rows.length - 20} more rows</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-brand-light flex gap-3 flex-shrink-0">
+          <button onClick={onClose} className="btn-outline py-3 px-6 text-xs flex-1">Cancel</button>
+          <button onClick={handleImport} disabled={rows.length === 0 || loading}
+            className="btn-primary flex-1 text-xs py-3">
+            {loading ? 'Importing…' : `Import ${rows.length} Products`}
           </button>
         </div>
       </div>
@@ -191,65 +222,212 @@ function AddProductModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
   );
 }
 
-// ── Main Admin ────────────────────────────────────────────────
+// ── Quick Add Form ─────────────────────────────────────────────
+function QuickAddRow({ onAdded }: { onAdded: () => void }) {
+  const [form, setForm]   = useState({ sku: '', name: '', price: '', stock: '0', category: 'Tops' });
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!form.sku || !form.name || !form.price) { toast.error('SKU, Name and Price required'); return; }
+    setSaving(true);
+    try {
+      const sku = form.sku.trim().toUpperCase();
+      const { error } = await supabase.from('products').insert({
+        sku, name: form.name.trim(), price: parseFloat(form.price),
+        currency: 'PHP', category: form.category, status: 'active', description: '', image_url: '',
+      });
+      if (error) throw error;
+      await supabase.from('inventory').insert({ sku, quantity: parseInt(form.stock) || 0 });
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
+      await supabase.from('qr_links').insert({ sku, qr_url: `${appUrl}/p/${sku}`, scans: 0 });
+      toast.success(`${sku} added ✅`);
+      setForm({ sku: '', name: '', price: '', stock: '0', category: 'Tops' });
+      onAdded();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="bg-brand-cream border border-brand-light p-4">
+      <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-3">⚡ Quick Add</p>
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+        <input placeholder="SKU*" value={form.sku}
+          onChange={e => setForm({ ...form, sku: e.target.value.toUpperCase() })}
+          className="input-field text-xs py-2 font-mono col-span-1" />
+        <input placeholder="Name*" value={form.name}
+          onChange={e => setForm({ ...form, name: e.target.value })}
+          className="input-field text-xs py-2 col-span-2" />
+        <input placeholder="Price*" type="number" value={form.price}
+          onChange={e => setForm({ ...form, price: e.target.value })}
+          className="input-field text-xs py-2" />
+        <input placeholder="Stock" type="number" value={form.stock}
+          onChange={e => setForm({ ...form, stock: e.target.value })}
+          className="input-field text-xs py-2" />
+        <button onClick={submit} disabled={saving}
+          className="bg-brand-orange text-white text-xs font-medium tracking-widest uppercase px-4 py-2 hover:bg-orange-600 transition-colors disabled:opacity-50">
+          {saving ? '…' : '+ Add'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Admin ─────────────────────────────────────────────────
 export default function AdminPage() {
   const router = useRouter();
-  const [tab,         setTab]         = useState<Tab>('orders');
-  const [user,        setUser]        = useState<any>(null);
-  const [orders,      setOrders]      = useState<OrderRow[]>([]);
-  const [products,    setProducts]    = useState<ProductRow[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [showAddProd, setShowAddProd] = useState(false);
+  const [tab,        setTab]        = useState<Tab>('products');
+  const [user,       setUser]       = useState<any>(null);
+  const [products,   setProducts]   = useState<Product[]>([]);
+  const [orders,     setOrders]     = useState<Order[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [search,     setSearch]     = useState('');
+  const [page,       setPage]       = useState(0);
+  const [showCSV,    setShowCSV]    = useState(false);
+  const [qrSku,      setQrSku]      = useState('');
+  const [qrProduct,  setQrProduct]  = useState<Product | null>(null);
+  const [genZip,     setGenZip]     = useState(false);
+  const [editPrices, setEditPrices] = useState<Record<string, string>>({});
+  const [editStock,  setEditStock]  = useState<Record<string, string>>({});
   const [stats, setStats] = useState({ orders: 0, revenue: 0, pending: 0, products: 0 });
 
+  // ── Auth ────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { router.push('/admin/login'); return; }
       const { data: admin } = await supabase.from('admin_profiles').select('role').eq('id', user.id).single();
       if (!admin) { await supabase.auth.signOut(); router.push('/admin/login'); return; }
-      setUser(user); loadData();
+      setUser(user);
+      loadAll();
     });
   }, []);
 
-  const loadData = useCallback(async () => {
+  const loadAll = async () => {
     setLoading(true);
-    await Promise.all([loadOrders(), loadProducts()]);
+    await Promise.all([loadProducts(), loadOrders()]);
     setLoading(false);
-  }, []);
-
-  const loadOrders = async () => {
-    const { data } = await supabase.from('orders')
-      .select(`*, payments(payment_method,status,payment_proof_url), order_items(sku,quantity,price)`)
-      .order('created_at', { ascending: false }).limit(100);
-    if (data) {
-      setOrders(data as OrderRow[]);
-      setStats(s => ({ ...s, orders: data.length, revenue: data.reduce((sum, o) => sum + Number(o.total_amount), 0), pending: data.filter(o => o.status === 'pending').length }));
-    }
   };
 
   const loadProducts = async () => {
-    const { data } = await supabase.from('products').select(`*, inventory(quantity)`).order('created_at', { ascending: false });
-    if (data) { setProducts(data as ProductRow[]); setStats(s => ({ ...s, products: data.length })); }
+    const { data } = await supabase
+      .from('products')
+      .select('*, inventory(quantity)')
+      .order('created_at', { ascending: false });
+    if (data) {
+      setProducts(data as Product[]);
+      setStats(s => ({ ...s, products: data.length }));
+    }
   };
 
-  const updateOrderStatus   = async (id: string, status: string) => { await supabase.from('orders').update({ status }).eq('id', id); toast.success(`Marked as ${status}`); loadOrders(); };
-  const updatePaymentStatus = async (orderId: string, status: string) => {
-    await supabase.from('payments').update({ status }).eq('order_id', orderId);
-    if (status === 'verified') await supabase.from('orders').update({ status: 'paid' }).eq('id', orderId);
-    toast.success(`Payment ${status}`); loadOrders();
+  const loadOrders = async () => {
+    const { data } = await supabase
+      .from('orders')
+      .select('*, payments(payment_method,status,payment_proof_url), order_items(sku,quantity,price)')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (data) {
+      setOrders(data as Order[]);
+      setStats(s => ({
+        ...s,
+        orders:  data.length,
+        revenue: data.reduce((sum, o) => sum + Number(o.total_amount), 0),
+        pending: data.filter(o => o.status === 'pending').length,
+      }));
+    }
   };
-  const updatePrice = async (id: string, val: string) => {
-    const price = parseFloat(val); if (isNaN(price)) { toast.error('Invalid price'); return; }
-    await supabase.from('products').update({ price }).eq('id', id); toast.success('Price updated!'); loadProducts();
+
+  // ── Search + Pagination ─────────────────────────────────────
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return products.filter(p =>
+      !q || p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)
+    );
+  }, [products, search]);
+
+  const totalPages  = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated   = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  useEffect(() => { setPage(0); }, [search]);
+
+  // ── Inline edits ────────────────────────────────────────────
+  const savePrice = async (product: Product) => {
+    const val = editPrices[product.id];
+    if (!val || isNaN(parseFloat(val))) return;
+    await supabase.from('products').update({ price: parseFloat(val) }).eq('id', product.id);
+    setProducts(prev => prev.map(p => p.id === product.id ? { ...p, price: parseFloat(val) } : p));
+    setEditPrices(prev => { const n = { ...prev }; delete n[product.id]; return n; });
+    toast.success('Price updated ✅');
   };
-  const toggleStatus = async (id: string, current: string) => {
-    const next = current === 'active' ? 'inactive' : 'active';
-    await supabase.from('products').update({ status: next }).eq('id', id); toast.success(`Product ${next}`); loadProducts();
+
+  const saveStock = async (product: Product) => {
+    const val = editStock[product.sku];
+    if (!val || isNaN(parseInt(val))) return;
+    await supabase.from('inventory').update({ quantity: parseInt(val) }).eq('sku', product.sku);
+    setProducts(prev => prev.map(p => p.sku === product.sku
+      ? { ...p, inventory: [{ quantity: parseInt(val) }] } : p));
+    setEditStock(prev => { const n = { ...prev }; delete n[product.sku]; return n; });
+    toast.success('Stock updated ✅');
   };
-  const updateInventory = async (sku: string, val: string) => {
-    const quantity = parseInt(val); if (isNaN(quantity) || quantity < 0) { toast.error('Invalid qty'); return; }
-    await supabase.from('inventory').update({ quantity }).eq('sku', sku); toast.success('Stock updated!'); loadProducts();
+
+  const toggleStatus = async (p: Product) => {
+    const next = p.status === 'active' ? 'inactive' : 'active';
+    await supabase.from('products').update({ status: next }).eq('id', p.id);
+    setProducts(prev => prev.map(x => x.id === p.id ? { ...x, status: next } : x));
   };
+
+  const deleteProduct = async (p: Product) => {
+    if (!confirm(`Delete ${p.sku} — ${p.name}? This cannot be undone.`)) return;
+    await supabase.from('products').delete().eq('id', p.id);
+    setProducts(prev => prev.filter(x => x.id !== p.id));
+    toast.success(`${p.sku} deleted`);
+  };
+
+  // ── Image update callback ────────────────────────────────────
+  const handleImageUploaded = (id: string, url: string) => {
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, image_url: url } : p));
+  };
+
+  // ── Order actions ────────────────────────────────────────────
+  const updateOrderStatus   = async (id: string, status: string) => { await supabase.from('orders').update({ status }).eq('id', id); toast.success(`Order: ${status}`); loadOrders(); };
+  const verifyPayment       = async (orderId: string) => { await supabase.from('payments').update({ status: 'verified' }).eq('order_id', orderId); await supabase.from('orders').update({ status: 'paid' }).eq('id', orderId); toast.success('Payment verified ✅'); loadOrders(); };
+  const rejectPayment       = async (orderId: string) => { await supabase.from('payments').update({ status: 'rejected' }).eq('order_id', orderId); toast.success('Payment rejected'); loadOrders(); };
+
+  // ── QR search ───────────────────────────────────────────────
+  const searchQR = async () => {
+    if (!qrSku.trim()) return;
+    const { data } = await supabase
+      .from('products').select('*, inventory(quantity)').eq('sku', qrSku.trim().toUpperCase()).single();
+    setQrProduct(data as Product || null);
+    if (!data) toast.error('SKU not found');
+  };
+
+  // ── Bulk QR ZIP ──────────────────────────────────────────────
+  const generateAllQR = async () => {
+    setGenZip(true);
+    const t = toast.loading('Generating QR codes…');
+    try {
+      // Dynamically import JSZip
+      const JSZip = (await import('jszip')).default;
+      const zip   = new JSZip();
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
+
+      for (const p of products) {
+        const url = `${appUrl}/p/${p.sku}`;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=20&format=png`;
+        const res  = await fetch(qrUrl);
+        const blob = await res.blob();
+        zip.file(`${p.sku}.png`, blob);
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(content);
+      a.download = 'ast3r-qr-codes.zip';
+      a.click();
+      toast.dismiss(t); toast.success(`✅ ${products.length} QR codes downloaded!`);
+    } catch (e: any) { toast.dismiss(t); toast.error('ZIP generation failed: ' + e.message); }
+    finally { setGenZip(false); }
+  };
+
   const signOut = async () => { await supabase.auth.signOut(); router.push('/admin/login'); };
 
   const badge = (status: string) => {
@@ -267,105 +445,314 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen bg-brand-cream">
-      {showAddProd && <AddProductModal onClose={() => setShowAddProd(false)} onSaved={loadProducts} />}
+    <div className="min-h-screen bg-[#F5F5F3]">
+      {showCSV && <CSVUploadModal onClose={() => setShowCSV(false)} onDone={loadProducts} />}
 
-      {/* Header */}
+      {/* ── Header ────────────────────────────────────── */}
       <header className="bg-brand-black text-brand-white sticky top-0 z-40 border-b border-[#1A1A1A]">
         <div className="max-w-screen-xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <span className="font-serif text-lg tracking-[0.15em]">AST3R</span>
-            <span className="text-[#333] text-xs">|</span>
+            <span className="text-[#333]">|</span>
             <span className="text-brand-gray text-xs tracking-widest uppercase">Admin</span>
           </div>
           <div className="flex items-center gap-6">
             <span className="text-xs text-brand-gray hidden sm:block">{user?.email}</span>
-            <button onClick={signOut} className="text-xs text-brand-gray hover:text-brand-white transition-colors">Sign Out</button>
+            <button onClick={signOut} className="text-xs text-brand-gray hover:text-white transition-colors">Sign Out</button>
           </div>
         </div>
       </header>
 
-      {/* Stats */}
+      {/* ── Stats ─────────────────────────────────────── */}
       <div className="bg-brand-white border-b border-brand-light">
-        <div className="max-w-screen-xl mx-auto px-4 py-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {[{ label: 'Total Orders', value: stats.orders, fmt: false }, { label: 'Total Revenue', value: stats.revenue, fmt: true }, { label: 'Pending', value: stats.pending, fmt: false }, { label: 'Products', value: stats.products, fmt: false }].map(({ label, value, fmt }) => (
-              <div key={label} className="text-center py-4">
-                <p className="font-serif text-2xl font-medium">{fmt ? formatPrice(value as number) : value}</p>
-                <p className="text-xs text-brand-gray tracking-widest uppercase mt-1">{label}</p>
+        <div className="max-w-screen-xl mx-auto px-4">
+          <div className="grid grid-cols-4 divide-x divide-brand-light">
+            {[
+              { label: 'Products', value: stats.products, fmt: false },
+              { label: 'Orders',   value: stats.orders,   fmt: false },
+              { label: 'Revenue',  value: stats.revenue,  fmt: true  },
+              { label: 'Pending',  value: stats.pending,  fmt: false },
+            ].map(({ label, value, fmt }) => (
+              <div key={label} className="text-center py-4 px-2">
+                <p className="font-serif text-xl font-medium">{fmt ? formatPrice(value as number) : value}</p>
+                <p className="text-xs text-brand-gray uppercase tracking-widest mt-0.5">{label}</p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* ── Tabs ──────────────────────────────────────── */}
       <div className="bg-brand-white border-b border-brand-light sticky top-14 z-30">
-        <div className="max-w-screen-xl mx-auto px-4 flex overflow-x-auto">
-          {(['orders', 'products', 'inventory', 'qr'] as Tab[]).map((t) => (
+        <div className="max-w-screen-xl mx-auto px-4 flex">
+          {(['products', 'orders', 'qr'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-6 py-4 text-xs font-medium tracking-widest uppercase border-b-2 whitespace-nowrap transition-all
+              className={`px-6 py-3.5 text-xs font-medium tracking-widest uppercase border-b-2 transition-all
                 ${tab === t ? 'border-brand-orange text-brand-black' : 'border-transparent text-brand-gray hover:text-brand-black'}`}>
-              {t === 'orders' ? '📋 ' : t === 'products' ? '👗 ' : t === 'inventory' ? '📦 ' : '📲 '}
-              {t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === 'products' ? `👗 Products (${products.length})` : t === 'orders' ? `📋 Orders (${orders.length})` : '📲 QR Codes'}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Content */}
-      <div className="max-w-screen-xl mx-auto px-4 py-8">
+      {/* ── Content ───────────────────────────────────── */}
+      <div className="max-w-screen-xl mx-auto px-4 py-6">
 
-        {/* ORDERS */}
+        {/* ══ PRODUCTS ══════════════════════════════════ */}
+        {tab === 'products' && (
+          <div className="space-y-4">
+
+            {/* Toolbar */}
+            <div className="flex flex-wrap gap-3 items-center justify-between">
+              {/* Search */}
+              <div className="relative flex-1 min-w-64 max-w-sm">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray text-sm">🔍</span>
+                <input
+                  type="text"
+                  placeholder="Search SKU or name…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full border border-brand-light pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-brand-black bg-white"
+                />
+                {search && (
+                  <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-gray hover:text-brand-black">✕</button>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => loadProducts()} className="border border-brand-light px-4 py-2.5 text-xs hover:border-brand-black transition-colors bg-white">
+                  ↻ Refresh
+                </button>
+                <button onClick={() => setShowCSV(true)}
+                  className="border border-brand-black px-4 py-2.5 text-xs font-medium hover:bg-brand-black hover:text-white transition-colors bg-white">
+                  📄 CSV Import
+                </button>
+                <button onClick={() => {
+                  const modal = document.getElementById('quick-add-section');
+                  modal?.scrollIntoView({ behavior: 'smooth' });
+                }} className="btn-primary py-2.5 px-5 text-xs">
+                  + Quick Add
+                </button>
+              </div>
+            </div>
+
+            {/* Result count */}
+            {search && (
+              <p className="text-xs text-brand-gray">
+                {filtered.length} result{filtered.length !== 1 ? 's' : ''} for "<strong>{search}</strong>"
+              </p>
+            )}
+
+            {/* ── Product Table ───────────────────────── */}
+            <div className="bg-white border border-brand-light overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-brand-cream border-b border-brand-light">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray w-12">IMG</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">SKU</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Name</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Cat</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Price</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Stock</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Status</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-brand-light">
+                    {paginated.length === 0 ? (
+                      <tr><td colSpan={8} className="text-center py-12 text-brand-gray text-sm">
+                        {search ? 'No products match your search.' : 'No products yet. Add one below!'}
+                      </td></tr>
+                    ) : paginated.map(product => {
+                      const stock = product.inventory?.[0]?.quantity ?? 0;
+                      const priceEdit = editPrices[product.id] !== undefined;
+                      const stockEdit = editStock[product.sku] !== undefined;
+
+                      return (
+                        <tr key={product.id} className="hover:bg-[#FAFAF8] transition-colors group">
+                          {/* Image */}
+                          <td className="px-4 py-3">
+                            <ImageCell product={product} onUploaded={handleImageUploaded} />
+                          </td>
+
+                          {/* SKU */}
+                          <td className="px-4 py-3 font-mono text-xs text-brand-gray whitespace-nowrap">{product.sku}</td>
+
+                          {/* Name */}
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-brand-black">{product.name}</p>
+                          </td>
+
+                          {/* Category */}
+                          <td className="px-4 py-3 text-xs text-brand-gray">{product.category}</td>
+
+                          {/* Price — inline edit */}
+                          <td className="px-4 py-3">
+                            {priceEdit ? (
+                              <div className="flex gap-1">
+                                <input type="number" value={editPrices[product.id]} autoFocus
+                                  onChange={e => setEditPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
+                                  onKeyDown={e => { if (e.key === 'Enter') savePrice(product); if (e.key === 'Escape') setEditPrices(prev => { const n={...prev}; delete n[product.id]; return n; }); }}
+                                  className="w-24 border border-brand-orange px-2 py-1 text-xs focus:outline-none" />
+                                <button onClick={() => savePrice(product)} className="text-xs bg-brand-orange text-white px-2 py-1 hover:bg-orange-600">✓</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setEditPrices(prev => ({ ...prev, [product.id]: String(product.price) }))}
+                                className="text-sm font-medium text-brand-black hover:text-brand-orange transition-colors cursor-pointer">
+                                {formatPrice(product.price)}
+                              </button>
+                            )}
+                          </td>
+
+                          {/* Stock — inline edit */}
+                          <td className="px-4 py-3">
+                            {stockEdit ? (
+                              <div className="flex gap-1">
+                                <input type="number" value={editStock[product.sku]} autoFocus min="0"
+                                  onChange={e => setEditStock(prev => ({ ...prev, [product.sku]: e.target.value }))}
+                                  onKeyDown={e => { if (e.key === 'Enter') saveStock(product); if (e.key === 'Escape') setEditStock(prev => { const n={...prev}; delete n[product.sku]; return n; }); }}
+                                  className="w-20 border border-brand-orange px-2 py-1 text-xs focus:outline-none" />
+                                <button onClick={() => saveStock(product)} className="text-xs bg-brand-orange text-white px-2 py-1 hover:bg-orange-600">✓</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setEditStock(prev => ({ ...prev, [product.sku]: String(stock) }))}
+                                className={`text-xs font-medium cursor-pointer hover:underline ${stock <= 0 ? 'text-red-500' : stock <= 5 ? 'text-orange-500' : 'text-green-600'}`}>
+                                {stock} units
+                              </button>
+                            )}
+                          </td>
+
+                          {/* Status */}
+                          <td className="px-4 py-3">{badge(product.status)}</td>
+
+                          {/* Actions */}
+                          <td className="px-4 py-3">
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <a href={`/p/${product.sku}`} target="_blank" rel="noopener noreferrer"
+                                className="text-xs px-2 py-1 border border-brand-light hover:border-brand-black transition-colors" title="View page">
+                                🔗
+                              </a>
+                              <button onClick={() => toggleStatus(product)}
+                                className="text-xs px-2 py-1 border border-brand-light hover:border-brand-black transition-colors"
+                                title={product.status === 'active' ? 'Deactivate' : 'Activate'}>
+                                {product.status === 'active' ? '⏸' : '▶'}
+                              </button>
+                              <button onClick={() => deleteProduct(product)}
+                                className="text-xs px-2 py-1 border border-red-200 text-red-500 hover:border-red-500 hover:bg-red-50 transition-colors" title="Delete">
+                                🗑
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-brand-light bg-brand-cream">
+                  <p className="text-xs text-brand-gray">
+                    Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+                  </p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                      className="text-xs px-3 py-1.5 border border-brand-light hover:border-brand-black disabled:opacity-40 transition-colors">
+                      ← Prev
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => (
+                      <button key={i} onClick={() => setPage(i)}
+                        className={`text-xs px-3 py-1.5 border transition-colors ${i === page ? 'border-brand-black bg-brand-black text-white' : 'border-brand-light hover:border-brand-black'}`}>
+                        {i + 1}
+                      </button>
+                    ))}
+                    <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}
+                      className="text-xs px-3 py-1.5 border border-brand-light hover:border-brand-black disabled:opacity-40 transition-colors">
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Quick Add ─────────────────────────────── */}
+            <div id="quick-add-section">
+              <QuickAddRow onAdded={loadProducts} />
+            </div>
+
+            {/* Help text */}
+            <p className="text-xs text-brand-gray text-center">
+              💡 Click any <strong>price</strong> or <strong>stock</strong> to edit inline · Click thumbnail to upload image · Hover row for actions
+            </p>
+          </div>
+        )}
+
+        {/* ══ ORDERS ════════════════════════════════════ */}
         {tab === 'orders' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="display-md">Orders</h2>
               <button onClick={loadOrders} className="btn-ghost text-xs">↻ Refresh</button>
             </div>
             {orders.length === 0 ? (
-              <div className="text-center py-20 bg-brand-white border border-brand-light">
-                <p className="text-brand-gray text-sm">No orders yet.</p>
+              <div className="text-center py-20 bg-white border border-brand-light">
+                <p className="text-brand-gray">No orders yet.</p>
               </div>
-            ) : orders.map((order) => {
+            ) : orders.map(order => {
               const payment = order.payments?.[0];
               return (
-                <div key={order.id} className="bg-brand-white border border-brand-light p-6">
-                  <div className="flex flex-wrap justify-between gap-4 mb-4">
-                    <div>
-                      <div className="flex items-center gap-3 mb-1">
-                        <p className="font-mono text-sm font-medium">{order.order_code}</p>
-                        {badge(order.status)}
-                      </div>
-                      <p className="text-xs text-brand-gray">{formatDate(order.created_at)}</p>
+                <div key={order.id} className="bg-white border border-brand-light p-5">
+                  <div className="flex flex-wrap justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3">
+                      <p className="font-mono text-sm font-medium">{order.order_code}</p>
+                      {badge(order.status)}
+                      {payment && badge(payment.status)}
                     </div>
                     <div className="text-right">
-                      <p className="font-serif text-xl font-medium">{formatPrice(order.total_amount)}</p>
-                      <p className="text-xs text-brand-gray">{payment?.payment_method}</p>
+                      <p className="font-serif text-lg font-medium">{formatPrice(order.total_amount)}</p>
+                      <p className="text-xs text-brand-gray">{formatDate(order.created_at)}</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-4 border-b border-brand-light">
-                    <div><p className="text-xs text-brand-gray mb-0.5">Customer</p><p className="font-medium text-sm">{order.customer_name}</p><p className="text-xs text-brand-gray">{order.contact_number}</p></div>
-                    <div><p className="text-xs text-brand-gray mb-0.5">Address</p><p className="text-xs leading-relaxed">{order.address_full}</p></div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm pb-4 border-b border-brand-light">
                     <div>
-                      <p className="text-xs text-brand-gray mb-0.5">Payment</p>
-                      {badge(payment?.status || 'pending')}
-                      {payment?.payment_proof_url && <a href={payment.payment_proof_url} target="_blank" rel="noopener noreferrer" className="block text-xs text-brand-orange underline mt-1">View Proof →</a>}
+                      <p className="text-xs text-brand-gray">Customer</p>
+                      <p className="font-medium">{order.customer_name}</p>
+                      <p className="text-xs text-brand-gray">{order.contact_number}</p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <p className="text-xs text-brand-gray">Address</p>
+                      <p className="text-xs">{order.address_full}</p>
                     </div>
                   </div>
-                  <div className="my-4 flex flex-wrap gap-2">
-                    {order.order_items?.map((item, i) => <span key={i} className="text-xs bg-brand-cream px-2 py-1 font-mono">{item.sku} × {item.quantity}</span>)}
-                  </div>
-                  <div className="flex flex-wrap gap-2 pt-4 border-t border-brand-light">
-                    <select defaultValue={order.status} onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                      className="text-xs border border-brand-light px-3 py-2 bg-brand-white focus:outline-none">
-                      <option value="pending">Pending</option><option value="paid">Paid</option>
-                      <option value="shipped">Shipped</option><option value="cancelled">Cancelled</option>
-                    </select>
-                    {payment?.status === 'pending' && payment?.payment_method !== 'COD' && <>
-                      <button onClick={() => updatePaymentStatus(order.id, 'verified')} className="text-xs px-4 py-2 bg-green-600 text-white hover:bg-green-700">✓ Verify</button>
-                      <button onClick={() => updatePaymentStatus(order.id, 'rejected')} className="text-xs px-4 py-2 bg-red-600 text-white hover:bg-red-700">✗ Reject</button>
-                    </>}
+
+                  <div className="flex flex-wrap gap-2 mt-4 items-center">
+                    <div className="flex gap-1 flex-wrap mr-2">
+                      {order.order_items?.map((item, i) => (
+                        <span key={i} className="text-xs bg-brand-cream px-2 py-0.5 font-mono">{item.sku} ×{item.quantity}</span>
+                      ))}
+                    </div>
+                    {payment?.payment_proof_url && (
+                      <a href={payment.payment_proof_url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-brand-orange underline">View Proof</a>
+                    )}
+                    <div className="ml-auto flex gap-2 flex-wrap">
+                      <select defaultValue={order.status}
+                        onChange={e => updateOrderStatus(order.id, e.target.value)}
+                        className="text-xs border border-brand-light px-3 py-1.5 bg-white focus:outline-none">
+                        <option value="pending">Pending</option>
+                        <option value="paid">Paid</option>
+                        <option value="shipped">Shipped</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                      {payment?.status === 'pending' && payment?.payment_method !== 'COD' && <>
+                        <button onClick={() => verifyPayment(order.id)} className="text-xs px-3 py-1.5 bg-green-600 text-white hover:bg-green-700">✓ Verify</button>
+                        <button onClick={() => rejectPayment(order.id)} className="text-xs px-3 py-1.5 bg-red-600 text-white hover:bg-red-700">✗ Reject</button>
+                      </>}
+                    </div>
                   </div>
                 </div>
               );
@@ -373,122 +760,100 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* PRODUCTS */}
-        {tab === 'products' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="display-md">Products</h2>
-              <div className="flex gap-3">
-                <button onClick={loadProducts} className="btn-ghost text-xs">↻ Refresh</button>
-                <button onClick={() => setShowAddProd(true)} className="btn-primary py-2 px-5 text-xs">+ Add Product</button>
+        {/* ══ QR CODES ══════════════════════════════════ */}
+        {tab === 'qr' && (
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+              {/* Search-based QR */}
+              <div className="bg-white border border-brand-light p-6">
+                <h3 className="font-serif text-lg mb-1">Search QR</h3>
+                <p className="text-xs text-brand-gray mb-5">Enter a SKU to generate its QR code</p>
+                <div className="flex gap-2 mb-6">
+                  <input
+                    type="text"
+                    placeholder="e.g. AST-TOP-001"
+                    value={qrSku}
+                    onChange={e => setQrSku(e.target.value.toUpperCase())}
+                    onKeyDown={e => e.key === 'Enter' && searchQR()}
+                    className="input-field font-mono text-sm flex-1"
+                  />
+                  <button onClick={searchQR} className="btn-primary py-2 px-5 text-xs">Generate</button>
+                </div>
+
+                {qrProduct && (
+                  <div className="text-center animate-fade-in">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store'}/p/${qrProduct.sku}`)}&bgcolor=FFFFFF&color=000000&margin=15`}
+                      alt={`QR ${qrProduct.sku}`}
+                      className="mx-auto mb-4 w-48 h-48 border border-brand-light"
+                    />
+                    <p className="font-medium text-brand-black">{qrProduct.name}</p>
+                    <p className="font-mono text-xs text-brand-gray mb-4">{qrProduct.sku}</p>
+                    <div className="flex gap-2 justify-center">
+                      <a
+                        href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store'}/p/${qrProduct.sku}`)}&bgcolor=FFFFFF&color=000000&margin=20`}
+                        download={`QR-${qrProduct.sku}.png`} target="_blank" rel="noopener noreferrer"
+                        className="btn-primary py-2 px-5 text-xs">
+                        ⬇ Download PNG
+                      </a>
+                      <a href={`/p/${qrProduct.sku}`} target="_blank" rel="noopener noreferrer"
+                        className="btn-outline py-2 px-5 text-xs">
+                        🔗 View Page
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Bulk QR ZIP */}
+              <div className="bg-white border border-brand-light p-6">
+                <h3 className="font-serif text-lg mb-1">Bulk QR Download</h3>
+                <p className="text-xs text-brand-gray mb-5">Generate QR codes for all {products.length} products in one ZIP file</p>
+
+                <div className="bg-brand-cream p-4 mb-6">
+                  <p className="text-xs text-brand-gray mb-2">Each file will be named:</p>
+                  <p className="font-mono text-xs text-brand-black">AST-TOP-001.png, AST-DRS-001.png…</p>
+                  <p className="text-xs text-brand-gray mt-2">600×600px · Print-ready quality</p>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  {products.slice(0, 5).map(p => (
+                    <div key={p.sku} className="flex items-center justify-between text-xs">
+                      <span className="font-mono text-brand-gray">{p.sku}.png</span>
+                      <span className="text-brand-gray">{p.name}</span>
+                    </div>
+                  ))}
+                  {products.length > 5 && <p className="text-xs text-brand-gray italic">…and {products.length - 5} more</p>}
+                </div>
+
+                <button onClick={generateAllQR} disabled={genZip || products.length === 0}
+                  className="btn-primary w-full text-xs py-3 disabled:opacity-50">
+                  {genZip ? '⏳ Generating ZIP…' : `⬇ Download All ${products.length} QR Codes (ZIP)`}
+                </button>
+                {genZip && <p className="text-xs text-brand-gray text-center mt-2">This may take a moment…</p>}
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products.map((product) => {
-                const stock = product.inventory?.[0]?.quantity ?? 0;
-                return (
-                  <div key={product.id} className="bg-brand-white border border-brand-light overflow-hidden">
-                    <div className="relative h-48 bg-brand-cream">
-                      {product.image_url ? (
-                        <Image src={product.image_url} alt={product.name} fill className="object-cover" sizes="33vw" />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center"><span className="text-4xl">👗</span></div>
-                      )}
-                      <div className="absolute top-3 right-3">{badge(product.status)}</div>
+
+            {/* All QR grid */}
+            <div>
+              <h3 className="font-serif text-lg mb-4">All QR Codes</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {products.map(p => {
+                  const url = `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store'}/p/${p.sku}`;
+                  return (
+                    <div key={p.sku} className="bg-white border border-brand-light p-4 text-center">
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(url)}&bgcolor=FAFAF8&color=0A0A0A&margin=8`}
+                        alt={p.sku} className="mx-auto mb-2 w-24 h-24" />
+                      <p className="font-mono text-xs text-brand-gray truncate">{p.sku}</p>
+                      <p className="text-xs text-brand-black truncate mb-2">{p.name}</p>
+                      <a href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=20`}
+                        download={`${p.sku}.png`} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-brand-orange underline hover:opacity-80">⬇ PNG</a>
                     </div>
-                    <div className="p-5">
-                      <p className="font-mono text-xs text-brand-gray mb-1">{product.sku}</p>
-                      <p className="font-medium text-brand-black mb-0.5">{product.name}</p>
-                      <p className="text-xs text-brand-gray mb-2">{product.category}</p>
-
-                      {/* IMAGE UPLOAD */}
-                      <ImageUploader product={product} onUploaded={loadProducts} />
-
-                      {/* Price */}
-                      <div className="mt-4 mb-3">
-                        <p className="text-xs text-brand-gray mb-1">Price (PHP)</p>
-                        <div className="flex gap-2">
-                          <input type="number" defaultValue={product.price} min="0" step="0.01"
-                            className="input-field text-sm py-2" id={`price-${product.id}`} />
-                          <button onClick={() => updatePrice(product.id, (document.getElementById(`price-${product.id}`) as HTMLInputElement)?.value)}
-                            className="px-3 py-2 bg-brand-black text-white text-xs hover:bg-brand-orange transition-colors whitespace-nowrap">Save</button>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs font-medium ${stock <= 0 ? 'text-red-500' : stock <= 5 ? 'text-orange-500' : 'text-green-600'}`}>
-                          Stock: {stock} units
-                        </span>
-                        <button onClick={() => toggleStatus(product.id, product.status)}
-                          className="text-xs underline text-brand-gray hover:text-brand-black">
-                          {product.status === 'active' ? 'Deactivate' : 'Activate'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* INVENTORY */}
-        {tab === 'inventory' && (
-          <div className="space-y-6">
-            <h2 className="display-md">Inventory</h2>
-            <div className="bg-brand-white border border-brand-light overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-brand-cream border-b border-brand-light">
-                  <tr>{['SKU', 'Product', 'Category', 'Stock', 'Status', 'Update'].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">{h}</th>
-                  ))}</tr>
-                </thead>
-                <tbody className="divide-y divide-brand-light">
-                  {products.map((p) => {
-                    const stock = p.inventory?.[0]?.quantity ?? 0;
-                    return (
-                      <tr key={p.sku} className="hover:bg-brand-cream transition-colors">
-                        <td className="px-4 py-4 font-mono text-xs text-brand-gray">{p.sku}</td>
-                        <td className="px-4 py-4 font-medium">{p.name}</td>
-                        <td className="px-4 py-4 text-xs text-brand-gray">{p.category}</td>
-                        <td className={`px-4 py-4 font-medium text-sm ${stock <= 0 ? 'text-red-500' : stock <= 5 ? 'text-orange-500' : 'text-green-600'}`}>{stock} units</td>
-                        <td className="px-4 py-4">{badge(p.status)}</td>
-                        <td className="px-4 py-4">
-                          <div className="flex gap-2">
-                            <input type="number" min="0" defaultValue={stock} id={`inv-${p.sku}`}
-                              className="w-24 border border-brand-light px-2 py-1 text-xs focus:outline-none focus:border-brand-black" />
-                            <button onClick={() => updateInventory(p.sku, (document.getElementById(`inv-${p.sku}`) as HTMLInputElement)?.value)}
-                              className="px-3 py-1 bg-brand-black text-white text-xs hover:bg-brand-orange transition-colors">Update</button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* QR CODES */}
-        {tab === 'qr' && (
-          <div className="space-y-6">
-            <h2 className="display-md">QR Codes</h2>
-            <p className="text-brand-gray text-sm">Print and attach to physical tags. Each QR links to the live product page.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products.map((p) => {
-                const url = `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store'}/p/${p.sku}`;
-                return (
-                  <div key={p.sku} className="bg-brand-white border border-brand-light p-6 text-center">
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&bgcolor=FAFAF8&color=0A0A0A&margin=10`}
-                      alt={`QR ${p.sku}`} className="mx-auto mb-4 w-40 h-40" />
-                    <p className="font-medium text-sm mb-0.5">{p.name}</p>
-                    <p className="font-mono text-xs text-brand-gray mb-4">{p.sku}</p>
-                    <a href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=20`}
-                      download={`QR-${p.sku}.png`} target="_blank" rel="noopener noreferrer"
-                      className="btn-outline py-2 px-5 text-xs inline-block">Download QR</a>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
