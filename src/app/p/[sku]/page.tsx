@@ -38,18 +38,27 @@ export default async function ProductPage({
 }) {
   const { sku } = params;
 
-  // Single optimized query using the DB function
+  // Fetch product with stock and size inventory
   const { data: product, error } = await supabase
     .rpc('get_product_with_stock', { p_sku: sku })
     .single() as { data: Record<string, any> | null; error: any };
+
+  // Fetch size inventory separately
+  const { data: sizeInventory } = await supabase
+    .from('size_inventory')
+    .select('size, quantity')
+    .eq('sku', sku)
+    .order('size');
 
   if (error || !product) notFound();
 
   // Track QR scan (non-blocking)
   supabase.rpc('track_qr_scan', { p_sku: sku }).then(() => {});
 
-  const { label: stockLabel, color: stockColor } = getStockLabel(product.quantity ?? 0);
-  const inStock = (product.quantity ?? 0) > 0;
+  const hasSizes    = sizeInventory && sizeInventory.length > 0;
+  const totalSizeQty = hasSizes ? sizeInventory!.reduce((sum, s) => sum + s.quantity, 0) : (product.quantity ?? 0);
+  const { label: stockLabel, color: stockColor } = getStockLabel(totalSizeQty);
+  const inStock = totalSizeQty > 0;
 
   return (
     <>
@@ -118,10 +127,36 @@ export default async function ProductPage({
               </div>
 
               {/* Stock Status */}
-              <div className="flex items-center gap-2 mb-8">
+              <div className="flex items-center gap-2 mb-6">
                 <span className={`w-2 h-2 rounded-full ${inStock ? 'bg-green-500' : 'bg-red-500'}`} />
                 <span className={`text-sm font-medium ${stockColor}`}>{stockLabel}</span>
               </div>
+
+              {/* Size selector with per-size stock */}
+              {hasSizes && sizeInventory && sizeInventory.length > 0 && (
+                <div className="mb-8">
+                  <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-3">Select Size</p>
+                  <div className="flex flex-wrap gap-2">
+                    {sizeInventory.map(({ size, quantity }) => (
+                      <div key={size} className={`
+                        flex flex-col items-center px-4 py-2 border text-sm font-medium min-w-[56px]
+                        ${quantity <= 0
+                          ? 'border-brand-light text-brand-light cursor-not-allowed line-through'
+                          : 'border-brand-black text-brand-black hover:bg-brand-black hover:text-white cursor-pointer transition-colors'
+                        }
+                      `}>
+                        <span>{size}</span>
+                        <span className={`text-xs mt-0.5 font-normal ${
+                          quantity <= 0 ? 'text-brand-light' :
+                          quantity <= 3 ? 'text-orange-500' : 'text-brand-gray'
+                        }`}>
+                          {quantity <= 0 ? 'sold out' : `${quantity} left`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Divider */}
               <div className="divider" />

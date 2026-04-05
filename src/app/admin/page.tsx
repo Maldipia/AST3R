@@ -10,11 +10,14 @@ import { formatPrice, formatDate } from '@/lib/utils';
 
 type Tab = 'products' | 'orders' | 'qr';
 
+type SizeStock = { size: string; quantity: number; };
+
 type Product = {
   id: string; sku: string; name: string; description: string;
   price: number; currency: string; image_url: string;
   category: string; status: string; sizes: string[];
   inventory: { quantity: number }[];
+  size_inventory?: SizeStock[];
 };
 
 type Order = {
@@ -112,6 +115,150 @@ function ImageCell({ product, onUploaded }: {
         className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) doUpload(f); }}
       />
+    </div>
+  );
+}
+
+// ── Size Stock Cell ───────────────────────────────────────────
+function SizeStockCell({ product, onUpdated }: {
+  product: Product;
+  onUpdated: () => void;
+}) {
+  const ALL_SIZES = ['XS','S','M','L','XL','XXL','Free Size'];
+  const [expanded, setExpanded] = useState(false);
+  const [saving,   setSaving]   = useState<string | null>(null);
+  const [localSizes, setLocalSizes] = useState<Record<string, number>>(() => {
+    const map: Record<string, number> = {};
+    (product.size_inventory || []).forEach(si => { map[si.size] = si.quantity; });
+    return map;
+  });
+
+  // Sync when product updates
+  useEffect(() => {
+    const map: Record<string, number> = {};
+    (product.size_inventory || []).forEach(si => { map[si.size] = si.quantity; });
+    setLocalSizes(map);
+  }, [product.size_inventory]);
+
+  const totalStock = Object.values(localSizes).reduce((a, b) => a + b, 0);
+  const hasSizes   = Object.keys(localSizes).length > 0;
+
+  const saveSizeQty = async (size: string, qty: number) => {
+    setSaving(size);
+    try {
+      const { error } = await supabase
+        .from('size_inventory')
+        .upsert({ sku: product.sku, size, quantity: qty }, { onConflict: 'sku,size' });
+      if (error) throw error;
+      setLocalSizes(prev => ({ ...prev, [size]: qty }));
+      toast.success(`${product.sku} ${size}: ${qty} units ✅`);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const removeSize = async (size: string) => {
+    await supabase.from('size_inventory').delete().eq('sku', product.sku).eq('size', size);
+    setLocalSizes(prev => { const n = {...prev}; delete n[size]; return n; });
+    toast.success(`${size} removed`);
+  };
+
+  const addSize = async (size: string) => {
+    if (localSizes[size] !== undefined) return;
+    await saveSizeQty(size, 0);
+  };
+
+  return (
+    <div>
+      {/* Summary row — always visible */}
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-2 text-left w-full group/size"
+      >
+        {hasSizes ? (
+          <div className="flex flex-wrap gap-1">
+            {Object.entries(localSizes).map(([size, qty]) => (
+              <span key={size} className={`text-xs px-1.5 py-0.5 border font-medium ${
+                qty <= 0 ? 'border-red-200 text-red-500 bg-red-50'
+                : qty <= 3 ? 'border-orange-200 text-orange-600 bg-orange-50'
+                : 'border-brand-light text-brand-black'
+              }`}>
+                {size}:{qty}
+              </span>
+            ))}
+            <span className="text-xs text-brand-gray group-hover/size:text-brand-orange ml-1">{expanded ? '▲' : '▼'}</span>
+          </div>
+        ) : (
+          <span className="text-xs text-brand-orange underline underline-offset-2 hover:opacity-80">
+            + Add sizes
+          </span>
+        )}
+      </button>
+
+      {/* Expanded editor */}
+      {expanded && (
+        <div className="mt-3 border border-brand-light bg-[#FAFAF8] p-3 space-y-2">
+          <p className="text-xs font-medium text-brand-gray tracking-widest uppercase mb-2">
+            Stock per size — {product.sku}
+          </p>
+
+          {/* Existing sizes */}
+          {Object.entries(localSizes).map(([size, qty]) => (
+            <div key={size} className="flex items-center gap-2">
+              <span className="text-xs font-medium w-16 text-brand-black">{size}</span>
+              <input
+                type="number"
+                min="0"
+                defaultValue={qty}
+                onBlur={e => {
+                  const val = parseInt(e.target.value);
+                  if (!isNaN(val) && val !== qty) saveSizeQty(size, val);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const val = parseInt((e.target as HTMLInputElement).value);
+                    if (!isNaN(val)) saveSizeQty(size, val);
+                  }
+                }}
+                className="w-20 border border-brand-light px-2 py-1 text-xs focus:outline-none focus:border-brand-orange"
+              />
+              <span className="text-xs text-brand-gray">units</span>
+              {saving === size && <span className="text-xs text-brand-orange animate-pulse">saving…</span>}
+              <button onClick={() => removeSize(size)} className="text-xs text-red-400 hover:text-red-600 ml-auto">✕</button>
+            </div>
+          ))}
+
+          {/* Add size buttons */}
+          <div className="pt-2 border-t border-brand-light">
+            <p className="text-xs text-brand-gray mb-1.5">Add size:</p>
+            <div className="flex flex-wrap gap-1">
+              {ALL_SIZES.filter(s => localSizes[s] === undefined).map(s => (
+                <button key={s} onClick={() => addSize(s)}
+                  className="text-xs px-2 py-1 border border-dashed border-brand-light hover:border-brand-orange hover:text-brand-orange transition-colors">
+                  + {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Total */}
+          {hasSizes && (
+            <div className="pt-2 border-t border-brand-light flex justify-between items-center">
+              <span className="text-xs text-brand-gray">Total stock:</span>
+              <span className={`text-xs font-bold ${totalStock <= 0 ? 'text-red-500' : 'text-green-600'}`}>
+                {totalStock} units
+              </span>
+            </div>
+          )}
+
+          <button onClick={() => setExpanded(false)}
+            className="w-full text-xs text-brand-gray hover:text-brand-black pt-1">
+            Close ▲
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -478,7 +625,8 @@ export default function AdminPage() {
 
   const loadProducts = async () => {
     const { data } = await supabase
-      .from('products').select('*, inventory(quantity)')
+      .from('products')
+      .select('*, inventory(quantity), size_inventory(size, quantity)')
       .order('created_at', { ascending: false });
     if (data) {
       setProducts(data as Product[]);
@@ -753,17 +901,9 @@ export default function AdminPage() {
                             <p className="text-xs text-brand-gray">{p.category}</p>
                           </td>
 
-                          {/* Sizes */}
-                          <td className="px-3 py-2">
-                            {sizes.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {sizes.map(s => (
-                                  <span key={s} className="text-xs border border-brand-light px-1.5 py-0.5 text-brand-gray">{s}</span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-brand-light">—</span>
-                            )}
+                          {/* Sizes + Stock per size */}
+                          <td className="px-3 py-2 min-w-[180px]">
+                            <SizeStockCell product={p} onUpdated={loadProducts} />
                           </td>
 
                           {/* Price — click to edit */}
@@ -794,32 +934,18 @@ export default function AdminPage() {
                             )}
                           </td>
 
-                          {/* Stock — click to edit */}
+                          {/* Stock — total across all sizes */}
                           <td className="px-3 py-2">
-                            {stockEdit ? (
-                              <div className="flex gap-1 items-center">
-                                <input
-                                  type="number" autoFocus min="0"
-                                  value={editStock[p.sku]}
-                                  onChange={e => setEditStock(prev => ({ ...prev, [p.sku]: e.target.value }))}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter')  saveStock(p);
-                                    if (e.key === 'Escape') setEditStock(prev => { const n={...prev}; delete n[p.sku]; return n; });
-                                  }}
-                                  className="w-20 border border-brand-orange px-2 py-1 text-xs focus:outline-none"
-                                />
-                                <button onClick={() => saveStock(p)} className="text-xs bg-brand-orange text-white px-2 py-1">✓</button>
-                                <button onClick={() => setEditStock(prev => { const n={...prev}; delete n[p.sku]; return n; })} className="text-xs text-brand-gray hover:text-brand-black">✕</button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => setEditStock(prev => ({ ...prev, [p.sku]: String(stock) }))}
-                                className={`text-xs font-medium hover:underline ${stock <= 0 ? 'text-red-500' : stock <= 5 ? 'text-orange-500' : 'text-green-600'}`}
-                                title="Click to edit stock"
-                              >
-                                {stock} units
-                              </button>
-                            )}
+                            {(() => {
+                              const sizeTotal = (p.size_inventory || []).reduce((sum, si) => sum + si.quantity, 0);
+                              const displayStock = (p.size_inventory || []).length > 0 ? sizeTotal : stock;
+                              const color = displayStock <= 0 ? 'text-red-500' : displayStock <= 5 ? 'text-orange-500' : 'text-green-600';
+                              return (
+                                <span className={`text-xs font-bold ${color}`}>
+                                  {displayStock} total
+                                </span>
+                              );
+                            })()}
                           </td>
 
                           {/* Status */}
