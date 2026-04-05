@@ -263,6 +263,270 @@ function SizeStockCell({ product, onUpdated }: {
   );
 }
 
+// ── Edit Product Modal ─────────────────────────────────────────
+function EditProductModal({ product, onClose, onSaved }: {
+  product: Product;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const ALL_SIZES  = ['XS','S','M','L','XL','XXL','Free Size'];
+  const CATEGORIES = ['Tops','Bottoms','Dresses','Outerwear','Accessories','Sets'];
+
+  const [form, setForm] = useState({
+    name:        product.name,
+    description: product.description || '',
+    price:       String(product.price),
+    category:    product.category,
+    status:      product.status,
+    stock:       String(product.inventory?.[0]?.quantity ?? 0),
+  });
+
+  // Per-size stock — load from product.size_inventory
+  const [sizeStock, setSizeStock] = useState<Record<string, number>>(() => {
+    const map: Record<string, number> = {};
+    (product.size_inventory || []).forEach(si => { map[si.size] = si.quantity; });
+    return map;
+  });
+
+  const [saving, setSaving] = useState(false);
+  const [imgUploading, setImgUploading] = useState(false);
+  const [imgPreview, setImgPreview] = useState(product.image_url || '');
+  const imgRef = useRef<HTMLInputElement>(null);
+  const hasSizes = Object.keys(sizeStock).length > 0;
+
+  const f = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
+
+  const toggleSize = (size: string) => {
+    setSizeStock(prev => {
+      const n = { ...prev };
+      if (n[size] !== undefined) delete n[size];
+      else n[size] = 0;
+      return n;
+    });
+  };
+
+  const uploadImage = async (file: File) => {
+    if (!file.type.startsWith('image/')) { toast.error('Image files only'); return; }
+    setImgUploading(true);
+    const t = toast.loading('Uploading image…');
+    try {
+      const ext = file.name.split('.').pop() || 'jpg';
+      const fn  = `${product.sku}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('product-images').upload(fn, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fn);
+      setImgPreview(publicUrl);
+      await supabase.from('products').update({ image_url: publicUrl }).eq('id', product.id);
+      toast.dismiss(t); toast.success('Image saved ✅');
+    } catch (e: any) { toast.dismiss(t); toast.error(e.message); }
+    finally { setImgUploading(false); }
+  };
+
+  const save = async () => {
+    if (!form.name.trim()) { toast.error('Name required'); return; }
+    const price = parseFloat(form.price);
+    if (isNaN(price)) { toast.error('Invalid price'); return; }
+
+    setSaving(true);
+    const t = toast.loading('Saving…');
+    try {
+      // Update product
+      const { error: pe } = await supabase.from('products').update({
+        name:        form.name.trim(),
+        description: form.description.trim(),
+        price,
+        category:    form.category,
+        status:      form.status,
+      }).eq('id', product.id);
+      if (pe) throw pe;
+
+      // Update plain inventory (if no sizes)
+      if (!hasSizes) {
+        const qty = parseInt(form.stock);
+        if (!isNaN(qty)) await supabase.from('inventory').update({ quantity: qty }).eq('sku', product.sku);
+      }
+
+      // Upsert size inventory
+      for (const [size, qty] of Object.entries(sizeStock)) {
+        await supabase.from('size_inventory').upsert(
+          { sku: product.sku, size, quantity: qty },
+          { onConflict: 'sku,size' }
+        );
+      }
+
+      // Remove deleted sizes
+      const removedSizes = (product.size_inventory || [])
+        .map(si => si.size)
+        .filter(s => sizeStock[s] === undefined);
+      for (const size of removedSizes) {
+        await supabase.from('size_inventory').delete().eq('sku', product.sku).eq('size', size);
+      }
+
+      toast.dismiss(t); toast.success(`${product.sku} saved ✅`);
+      onSaved(); onClose();
+    } catch (e: any) { toast.dismiss(t); toast.error(e.message || 'Save failed'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div
+        className="bg-white w-full sm:max-w-xl max-h-[95vh] flex flex-col overflow-hidden sm:rounded-none"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-brand-light flex-shrink-0">
+          <div>
+            <h2 className="font-serif text-lg text-brand-black">Edit Product</h2>
+            <p className="font-mono text-xs text-brand-gray">{product.sku}</p>
+          </div>
+          <button onClick={onClose} className="text-brand-gray hover:text-brand-black text-2xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-5">
+
+          {/* Image */}
+          <div>
+            <label className="input-label">Product Image</label>
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 bg-brand-cream border border-brand-light overflow-hidden relative flex-shrink-0">
+                {imgPreview ? (
+                  <Image src={imgPreview} alt={form.name} fill className="object-cover" sizes="80px" />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-brand-light text-xs text-center px-1">No image</div>
+                )}
+                {imgUploading && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <button
+                  onClick={() => imgRef.current?.click()}
+                  disabled={imgUploading}
+                  className="w-full border-2 border-dashed border-brand-orange text-brand-orange text-sm py-3 hover:bg-brand-orange hover:text-white transition-all font-medium disabled:opacity-50"
+                >
+                  {imgUploading ? 'Uploading…' : imgPreview ? '🔄 Change Photo' : '📸 Upload Photo'}
+                </button>
+                <input ref={imgRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(f); }} />
+                <p className="text-xs text-brand-gray mt-1.5">JPG, PNG, WEBP — max 10MB</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Name */}
+          <div>
+            <label className="input-label">Product Name *</label>
+            <input type="text" value={form.name} onChange={e => f('name', e.target.value)}
+              className="input-field" placeholder="e.g. Linen Blazer" />
+          </div>
+
+          {/* Price + Category */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="input-label">Price (PHP) *</label>
+              <input type="number" value={form.price} min="0" step="0.01"
+                onChange={e => f('price', e.target.value)} className="input-field" />
+            </div>
+            <div>
+              <label className="input-label">Category</label>
+              <select value={form.category} onChange={e => f('category', e.target.value)} className="input-field">
+                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="input-label">Status</label>
+            <div className="flex gap-3">
+              {['active','inactive'].map(s => (
+                <button key={s} onClick={() => f('status', s)}
+                  className={`flex-1 py-2.5 text-sm font-medium border transition-all ${
+                    form.status === s
+                      ? s === 'active' ? 'bg-brand-black text-white border-brand-black' : 'bg-red-600 text-white border-red-600'
+                      : 'border-brand-light text-brand-gray hover:border-brand-black'
+                  }`}>
+                  {s === 'active' ? '✅ Active' : '⏸ Inactive'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="input-label">Description</label>
+            <textarea value={form.description} onChange={e => f('description', e.target.value)}
+              rows={3} placeholder="Describe this product…" className="input-field resize-none" />
+          </div>
+
+          {/* Sizes with stock */}
+          <div>
+            <label className="input-label">Sizes & Stock per Size</label>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {ALL_SIZES.map(size => (
+                <button key={size} onClick={() => toggleSize(size)}
+                  className={`text-xs px-3 py-2 border transition-all font-medium ${
+                    sizeStock[size] !== undefined
+                      ? 'border-brand-black bg-brand-black text-white'
+                      : 'border-brand-light text-brand-gray hover:border-brand-black'
+                  }`}>
+                  {size}
+                </button>
+              ))}
+            </div>
+
+            {Object.keys(sizeStock).length > 0 && (
+              <div className="border border-brand-light divide-y divide-brand-light">
+                {Object.entries(sizeStock).map(([size, qty]) => (
+                  <div key={size} className="flex items-center gap-3 px-4 py-2.5">
+                    <span className="text-sm font-medium text-brand-black w-16">{size}</span>
+                    <input
+                      type="number" min="0" value={qty}
+                      onChange={e => setSizeStock(prev => ({ ...prev, [size]: parseInt(e.target.value) || 0 }))}
+                      className="w-24 border border-brand-light px-3 py-1.5 text-sm focus:outline-none focus:border-brand-orange"
+                    />
+                    <span className="text-xs text-brand-gray">units</span>
+                    <button onClick={() => toggleSize(size)}
+                      className="ml-auto text-xs text-red-400 hover:text-red-600">Remove</button>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between px-4 py-2.5 bg-brand-cream">
+                  <span className="text-xs font-medium text-brand-gray">Total</span>
+                  <span className="text-sm font-bold text-brand-black">
+                    {Object.values(sizeStock).reduce((a, b) => a + b, 0)} units
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {Object.keys(sizeStock).length === 0 && (
+              <div>
+                <label className="input-label mt-3">Plain Stock (no sizes)</label>
+                <input type="number" min="0" value={form.stock}
+                  onChange={e => f('stock', e.target.value)}
+                  className="input-field w-32" placeholder="0" />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 px-5 py-4 border-t border-brand-light flex-shrink-0">
+          <button onClick={onClose} className="btn-outline flex-1 py-3 text-sm">Cancel</button>
+          <button onClick={save} disabled={saving}
+            className="btn-primary flex-2 py-3 text-sm flex-[2] disabled:opacity-50">
+            {saving ? 'Saving…' : '✅ Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Bulk Edit Modal ────────────────────────────────────────────
 function BulkEditModal({ products, onClose, onSaved }: {
   products: Product[];
@@ -808,6 +1072,7 @@ export default function AdminPage() {
   const [page,        setPage]        = useState(0);
   const [showCSV,     setShowCSV]     = useState(false);
   const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [qrSku,       setQrSku]       = useState('');
   const [qrProduct,   setQrProduct]   = useState<Product | null>(null);
   const [genZip,      setGenZip]      = useState(false);
@@ -974,6 +1239,7 @@ export default function AdminPage() {
     <div className="min-h-screen bg-[#F5F5F3]">
       {showCSV && <CSVModal onClose={() => setShowCSV(false)} onDone={loadProducts} />}
       {showBulkEdit && <BulkEditModal products={products} onClose={() => setShowBulkEdit(false)} onSaved={loadProducts} />}
+      {editingProduct && <EditProductModal product={editingProduct} onClose={() => setEditingProduct(null)} onSaved={loadProducts} />}
 
       {/* Header */}
       <header className="bg-brand-black text-brand-white sticky top-0 z-40 border-b border-[#1A1A1A]">
@@ -1096,10 +1362,10 @@ export default function AdminPage() {
                       const sizes     = Array.isArray(p.sizes) ? p.sizes : [];
 
                       return (
-                        <tr key={p.id} className="hover:bg-[#FAFAF8] transition-colors group">
+                        <tr key={p.id} className="hover:bg-[#FAFAF8] transition-colors group cursor-pointer" onClick={() => setEditingProduct(p)}>
 
                           {/* Image */}
-                          <td className="px-3 py-2">
+                          <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
                             <ImageCell product={p} onUploaded={handleImageUploaded} />
                           </td>
 
@@ -1165,8 +1431,11 @@ export default function AdminPage() {
                           <td className="px-3 py-2">{badge(p.status)}</td>
 
                           {/* Actions */}
-                          <td className="px-3 py-2">
+                          <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => setEditingProduct(p)}
+                                title="Edit product"
+                                className="text-xs px-2 py-1 border border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white transition-colors">✏️</button>
                               <a href={`/p/${p.sku}`} target="_blank" rel="noopener noreferrer"
                                 title="View product page"
                                 className="text-xs px-2 py-1 border border-brand-light hover:border-brand-black transition-colors">🔗</a>
