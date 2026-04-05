@@ -44,41 +44,28 @@ function ImageCell({ product, onUploaded }: {
     if (file.size > 10 * 1024 * 1024)   { toast.error('Max file size is 10MB'); return; }
 
     setUploading(true);
-    const t = toast.loading(`Uploading image…`);
+    const t = toast.loading(`Uploading image for ${product.name}...`);
 
     try {
-      // Use timestamp + SKU for unique filename
       const ext      = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `${product.sku}-${Date.now()}.${ext}`;
 
-      // Upload to product-images bucket
       const { error: upErr } = await supabase.storage
         .from('product-images')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert:       true,
-          contentType:  file.type,
-        });
+        .upload(fileName, file, { cacheControl: '3600', upsert: true, contentType: file.type });
 
       if (upErr) throw new Error(`Storage error: ${upErr.message}`);
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('product-images')
-        .getPublicUrl(fileName);
-
+      const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(fileName);
       const publicUrl = urlData.publicUrl;
 
-      // Update product record
       const { error: dbErr } = await supabase
-        .from('products')
-        .update({ image_url: publicUrl })
-        .eq('id', product.id);
+        .from('products').update({ image_url: publicUrl }).eq('id', product.id);
 
       if (dbErr) throw new Error(`DB error: ${dbErr.message}`);
 
       toast.dismiss(t);
-      toast.success('Image uploaded! ✅');
+      toast.success(`Image saved! ✅`);
       onUploaded(product.id, publicUrl);
     } catch (err: any) {
       toast.dismiss(t);
@@ -90,45 +77,40 @@ function ImageCell({ product, onUploaded }: {
   };
 
   return (
-    <div className="relative w-10 h-10 flex-shrink-0 cursor-pointer group/img"
-      onClick={() => !uploading && ref.current?.click()}
-      title="Click to upload image"
-    >
+    <div className="flex items-center gap-2">
       {/* Thumbnail */}
-      <div className="w-10 h-10 bg-brand-cream border border-brand-light overflow-hidden relative group-hover/img:border-brand-orange transition-colors">
+      <div className="w-12 h-12 bg-brand-cream border border-brand-light overflow-hidden relative flex-shrink-0">
         {product.image_url ? (
-          <Image
-            src={product.image_url}
-            alt={product.name}
-            fill
-            className="object-cover"
-            sizes="40px"
-          />
+          <Image src={product.image_url} alt={product.name} fill className="object-cover" sizes="48px" />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-base">
-            {uploading ? '' : '📸'}
-          </div>
+          <div className="absolute inset-0 flex items-center justify-center text-brand-light text-xs">No img</div>
         )}
-        {/* Overlay on hover */}
-        <div className="absolute inset-0 bg-brand-orange/80 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-          <span className="text-white text-xs font-bold">{uploading ? '⏳' : '↑'}</span>
-        </div>
-        {/* Spinner */}
         {uploading && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>
+
+      {/* Always-visible orange upload button */}
+      <button
+        onClick={() => !uploading && ref.current?.click()}
+        disabled={uploading}
+        className="flex items-center gap-1.5 text-xs px-3 py-2 border-2 border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white transition-all disabled:opacity-50 whitespace-nowrap font-semibold"
+      >
+        {uploading ? (
+          <><div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> Uploading...</>
+        ) : (
+          <>{product.image_url ? '🔄 Change Photo' : '📸 Upload Photo'}</>
+        )}
+      </button>
+
       <input
         ref={ref}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/jpg"
         className="hidden"
-        onChange={e => {
-          const file = e.target.files?.[0];
-          if (file) doUpload(file);
-        }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) doUpload(f); }}
       />
     </div>
   );
