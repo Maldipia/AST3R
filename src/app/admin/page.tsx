@@ -82,34 +82,30 @@ function ImageCell({ product, onUploaded }: {
   };
 
   return (
-    <div className="flex items-center gap-2">
-      {/* Thumbnail */}
-      <div className="w-12 h-12 bg-brand-cream border border-brand-light overflow-hidden relative flex-shrink-0">
+    <div
+      className="relative w-12 h-12 flex-shrink-0 cursor-pointer group/img"
+      onClick={() => !uploading && ref.current?.click()}
+      title={product.image_url ? 'Click to change photo' : 'Click to upload photo'}
+    >
+      <div className="w-12 h-12 bg-brand-cream border border-brand-light overflow-hidden relative">
         {product.image_url ? (
           <Image src={product.image_url} alt={product.name} fill className="object-cover" sizes="48px" />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-brand-light text-xs">No img</div>
+          <div className="absolute inset-0 flex items-center justify-center text-xl">📸</div>
         )}
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-brand-orange/85 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+          <span className="text-white text-xs font-bold leading-tight text-center">
+            {uploading ? '⏳' : product.image_url ? '🔄' : '📸'}
+          </span>
+        </div>
+        {/* Spinner */}
         {uploading && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>
-
-      {/* Always-visible orange upload button */}
-      <button
-        onClick={() => !uploading && ref.current?.click()}
-        disabled={uploading}
-        className="flex items-center gap-1.5 text-xs px-3 py-2 border-2 border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white transition-all disabled:opacity-50 whitespace-nowrap font-semibold"
-      >
-        {uploading ? (
-          <><div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> Uploading...</>
-        ) : (
-          <>{product.image_url ? '🔄 Change Photo' : '📸 Upload Photo'}</>
-        )}
-      </button>
-
       <input
         ref={ref}
         type="file"
@@ -146,15 +142,18 @@ function SizeStockCell({ product, onUpdated }: {
   const hasSizes   = Object.keys(localSizes).length > 0;
 
   const saveSizeQty = async (size: string, qty: number) => {
+    // Optimistic update first — no UI block
+    setLocalSizes(prev => ({ ...prev, [size]: qty }));
     setSaving(size);
     try {
       const { error } = await supabase
         .from('size_inventory')
         .upsert({ sku: product.sku, size, quantity: qty }, { onConflict: 'sku,size' });
       if (error) throw error;
-      setLocalSizes(prev => ({ ...prev, [size]: qty }));
-      toast.success(`${product.sku} ${size}: ${qty} units ✅`);
+      toast.success(`${size}: ${qty} ✅`, { duration: 1500 });
     } catch (e: any) {
+      // Revert on error
+      setLocalSizes(prev => ({ ...prev, [size]: qty }));
       toast.error(e.message);
     } finally {
       setSaving(null);
@@ -1165,33 +1164,37 @@ export default function AdminPage() {
   const savePrice = async (p: Product) => {
     const val = parseFloat(editPrices[p.id]);
     if (isNaN(val)) return;
-    await supabase.from('products').update({ price: val }).eq('id', p.id);
+    // Optimistic update
     setProducts(prev => prev.map(x => x.id === p.id ? { ...x, price: val } : x));
     setEditPrices(prev => { const n = {...prev}; delete n[p.id]; return n; });
     toast.success('Price saved ✅');
+    await supabase.from('products').update({ price: val }).eq('id', p.id);
   };
 
   const saveStock = async (p: Product) => {
     const val = parseInt(editStock[p.sku]);
     if (isNaN(val)) return;
-    await supabase.from('inventory').update({ quantity: val }).eq('sku', p.sku);
+    // Optimistic update
     setProducts(prev => prev.map(x => x.sku === p.sku ? { ...x, inventory: [{ quantity: val }] } : x));
     setEditStock(prev => { const n = {...prev}; delete n[p.sku]; return n; });
     toast.success('Stock saved ✅');
+    await supabase.from('inventory').update({ quantity: val }).eq('sku', p.sku);
   };
 
   const toggleStatus = async (p: Product) => {
     const next = p.status === 'active' ? 'inactive' : 'active';
-    await supabase.from('products').update({ status: next }).eq('id', p.id);
+    // Optimistic
     setProducts(prev => prev.map(x => x.id === p.id ? { ...x, status: next } : x));
-    toast.success(`${next === 'active' ? '✅' : '⏸'} ${p.sku} ${next}`);
+    toast.success(`${next === 'active' ? '✅' : '⏸'} ${p.sku} ${next}`, { duration: 1500 });
+    await supabase.from('products').update({ status: next }).eq('id', p.id);
   };
 
   const deleteProduct = async (p: Product) => {
     if (!confirm(`Delete ${p.sku} — ${p.name}?\n\nThis cannot be undone.`)) return;
-    await supabase.from('products').delete().eq('id', p.id);
+    // Optimistic update first (no UI block)
     setProducts(prev => prev.filter(x => x.id !== p.id));
     toast.success(`${p.sku} deleted`);
+    await supabase.from('products').delete().eq('id', p.id);
   };
 
   const handleImageUploaded = (id: string, url: string) => {
@@ -1367,7 +1370,7 @@ export default function AdminPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-brand-cream border-b border-brand-light">
                     <tr>
-                      <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray w-14">IMG</th>
+                      <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray w-14" title="Click image to upload photo">📸</th>
                       <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">SKU</th>
                       <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Name</th>
                       <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Sizes</th>
@@ -1511,7 +1514,7 @@ export default function AdminPage() {
             <QuickAdd onAdded={loadProducts} />
 
             <p className="text-xs text-brand-gray text-center">
-              💡 Click <strong>thumbnail</strong> to upload image · Click <strong>price</strong> or <strong>stock</strong> to edit inline · Hover row for actions (🔗 ⏸ 🗑)
+              💡 <strong>Click row</strong> to edit · <strong>Hover image</strong> to upload photo · Click <strong>price</strong> or <strong>stock</strong> to edit inline · Hover for actions (✏️ 🔗 ⏸ 🗑)
             </p>
           </div>
         )}
