@@ -127,23 +127,29 @@ export default async function ProductPage({
               {/* Price */}
               <div className="mb-6">
                 <div className="flex items-baseline gap-3 flex-wrap">
-                  <span className="font-serif text-3xl font-medium text-brand-black">
-                    {formatPrice(product.price, product.currency)}
-                  </span>
-                  {comparePrice && comparePrice > product.price && (
-                    <span className="font-serif text-xl text-brand-gray line-through">
-                      {formatPrice(comparePrice, product.currency)}
-                    </span>
-                  )}
-                  {comparePrice && comparePrice > product.price && (
-                    <span className="text-xs font-bold text-white bg-red-500 px-2 py-1 tracking-wide">
-                      {Math.round((1 - product.price / comparePrice) * 100)}% OFF
+                  {comparePrice && comparePrice < product.price ? (
+                    <>
+                      {/* Sale price — big and prominent */}
+                      <span className="font-serif text-3xl font-medium text-red-600">
+                        {formatPrice(comparePrice, product.currency)}
+                      </span>
+                      {/* Original price — crossed out */}
+                      <span className="font-serif text-xl text-brand-gray line-through">
+                        {formatPrice(product.price, product.currency)}
+                      </span>
+                      <span className="text-xs font-bold text-white bg-red-500 px-2 py-1 tracking-wide">
+                        {Math.round((1 - comparePrice / product.price) * 100)}% OFF
+                      </span>
+                    </>
+                  ) : (
+                    <span className="font-serif text-3xl font-medium text-brand-black">
+                      {formatPrice(product.price, product.currency)}
                     </span>
                   )}
                 </div>
-                {comparePrice && comparePrice > product.price && (
+                {comparePrice && comparePrice < product.price && (
                   <p className="text-xs text-green-600 mt-1 font-medium">
-                    You save {formatPrice(comparePrice - product.price)}
+                    You save {formatPrice(product.price - comparePrice)}
                   </p>
                 )}
               </div>
@@ -193,6 +199,7 @@ export default async function ProductPage({
                 sku={product.sku}
                 name={product.name}
                 price={product.price}
+                salePrice={comparePrice}
                 imageUrl={product.image_url}
                 inStock={inStock}
               />

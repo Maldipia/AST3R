@@ -343,13 +343,15 @@ function EditProductModal({ product, onClose, onSaved }: {
 
       // Update product — use .select() to confirm row was updated
       const comparePrice = parseFloat(form.compare_price) || null;
+      // compare_price = sale price (must be LOWER than price)
+      const validSalePrice = comparePrice && comparePrice < price ? comparePrice : null;
       const { data: updatedRows, error: pe } = await supabase
         .from('products')
         .update({
           name:          form.name.trim(),
           description:   form.description.trim(),
           price,
-          compare_price: comparePrice && comparePrice > price ? comparePrice : null,
+          compare_price: validSalePrice,
           category:      form.category,
           status:        form.status,
         })
@@ -458,27 +460,33 @@ function EditProductModal({ product, onClose, onSaved }: {
           {/* Price + Compare Price + Category */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="input-label">Sale Price (PHP) *</label>
+              <label className="input-label">Original Price (PHP) *</label>
               <input type="number" value={form.price} min="0" step="0.01"
                 onChange={e => f('price', e.target.value)} className="input-field" />
+              <p className="text-xs text-brand-gray mt-1">Regular / full price</p>
             </div>
             <div>
-              <label className="input-label">Original Price (optional)</label>
+              <label className="input-label"><span className="text-red-500">Sale Price</span> (optional)</label>
               <input type="number" value={form.compare_price} min="0" step="0.01"
-                placeholder="e.g. 1500"
+                placeholder="lower than original"
                 onChange={e => f('compare_price', e.target.value)} className="input-field" />
-              <p className="text-xs text-brand-gray mt-1">Shows as <span className="line-through">₱1,500</span> → crossed out</p>
+              <p className="text-xs text-brand-gray mt-1">Must be lower — shown as discounted</p>
             </div>
           </div>
           {/* Discount badge preview */}
-          {form.compare_price && parseFloat(form.compare_price) > parseFloat(form.price || '0') && (
+          {form.compare_price && parseFloat(form.compare_price) > 0 && parseFloat(form.compare_price) < parseFloat(form.price || '0') && (
             <div className="bg-red-50 border border-red-100 px-4 py-2 flex items-center gap-3">
               <span className="text-xs text-brand-gray">Preview:</span>
-              <span className="text-sm font-bold text-brand-black">₱{parseFloat(form.price).toLocaleString()}</span>
-              <span className="text-xs text-brand-gray line-through">₱{parseFloat(form.compare_price).toLocaleString()}</span>
-              <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5">
-                -{Math.round((1 - parseFloat(form.price) / parseFloat(form.compare_price)) * 100)}% OFF
+              <span className="text-xs text-brand-gray line-through">₱{parseFloat(form.price).toLocaleString()}</span>
+              <span className="text-sm font-bold text-red-600">₱{parseFloat(form.compare_price).toLocaleString()}</span>
+              <span className="text-xs font-bold text-white bg-red-500 px-2 py-0.5">
+                -{Math.round((1 - parseFloat(form.compare_price) / parseFloat(form.price)) * 100)}% OFF
               </span>
+            </div>
+          )}
+          {form.compare_price && parseFloat(form.compare_price) >= parseFloat(form.price || '0') && parseFloat(form.compare_price) > 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 px-4 py-2">
+              <p className="text-xs text-yellow-700">⚠️ Sale price must be LOWER than original price</p>
             </div>
           )}
           <div>
@@ -1493,10 +1501,11 @@ export default function AdminPage() {
                                   />
                                   <button onClick={async () => {
                                     const val = parseFloat(editPrices[saleId]) || null;
+                                    if (val && val >= p.price) { toast.error('Sale price must be LOWER than original price'); return; }
                                     setProducts(prev => prev.map(x => x.id === p.id ? { ...x, compare_price: val } : x));
                                     setEditPrices(prev => { const n={...prev}; delete n[saleId]; return n; });
                                     await supabase.from('products').update({ compare_price: val }).eq('id', p.id);
-                                    toast.success('Sale price saved ✅');
+                                    toast.success(`Sale price saved ✅`);
                                   }} className="text-xs bg-red-500 text-white px-2 py-1">✓</button>
                                   <button onClick={() => setEditPrices(prev => { const n={...prev}; delete n[saleId]; return n; })} className="text-xs text-brand-gray">✕</button>
                                 </div>
@@ -1506,11 +1515,11 @@ export default function AdminPage() {
                                   className="text-left group/sale"
                                   title="Click to set sale price"
                                 >
-                                  {p.compare_price && p.compare_price > p.price ? (
+                                  {p.compare_price && p.compare_price < p.price ? (
                                     <div>
                                       <span className="text-sm font-medium text-red-600">{formatPrice(p.compare_price)}</span>
                                       <span className="ml-1.5 text-xs font-bold text-white bg-red-500 px-1 py-0.5">
-                                        -{Math.round((1 - p.price / p.compare_price) * 100)}%
+                                        -{Math.round((1 - p.compare_price / p.price) * 100)}%
                                       </span>
                                     </div>
                                   ) : (

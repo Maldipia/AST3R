@@ -5,15 +5,18 @@ import { useRouter } from 'next/navigation';
 import toast         from 'react-hot-toast';
 
 interface OrderButtonProps {
-  sku:      string;
-  name:     string;
-  price:    number;
-  imageUrl: string;
-  inStock:  boolean;
+  sku:        string;
+  name:       string;
+  price:      number;
+  salePrice?: number | null;
+  imageUrl:   string;
+  inStock:    boolean;
 }
 
-export default function OrderButton({ sku, name, price, imageUrl, inStock }: OrderButtonProps) {
+export default function OrderButton({ sku, name, price, salePrice, imageUrl, inStock }: OrderButtonProps) {
   const router = useRouter();
+  // Use sale price if available, otherwise use regular price
+  const checkoutPrice = salePrice && salePrice < price ? salePrice : price;
 
   const handleOrder = () => {
     if (!inStock) {
@@ -21,8 +24,8 @@ export default function OrderButton({ sku, name, price, imageUrl, inStock }: Ord
       return;
     }
 
-    // Store cart item in sessionStorage
-    const cartItem = { sku, name, price, quantity: 1, image_url: imageUrl };
+    // Store cart item with correct price
+    const cartItem = { sku, name, price: checkoutPrice, quantity: 1, image_url: imageUrl };
     sessionStorage.setItem('ast3r_cart', JSON.stringify([cartItem]));
 
     toast.success('Proceeding to checkout…');
