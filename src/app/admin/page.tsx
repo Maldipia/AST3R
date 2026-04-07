@@ -1185,14 +1185,10 @@ export default function AdminPage() {
   const savePrice = async (p: Product) => {
     const val = parseFloat(editPrices[p.id]);
     if (isNaN(val)) return;
-    // Read compare_price from DOM input if visible
-    const compareInput = document.getElementById(`compare-${p.id}`) as HTMLInputElement;
-    const compareVal   = compareInput ? parseFloat(compareInput.value) || null : p.compare_price;
-    // Optimistic update
-    setProducts(prev => prev.map(x => x.id === p.id ? { ...x, price: val, compare_price: compareVal } : x));
+    setProducts(prev => prev.map(x => x.id === p.id ? { ...x, price: val } : x));
     setEditPrices(prev => { const n = {...prev}; delete n[p.id]; return n; });
     toast.success('Price saved ✅');
-    await supabase.from('products').update({ price: val, compare_price: compareVal }).eq('id', p.id);
+    await supabase.from('products').update({ price: val }).eq('id', p.id);
   };
 
   const saveStock = async (p: Product) => {
@@ -1399,6 +1395,9 @@ export default function AdminPage() {
                       <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Name</th>
                       <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Sizes</th>
                       <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Price</th>
+                      <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">
+                        <span className="text-red-500">Sale</span>
+                      </th>
                       <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Stock</th>
                       <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Status</th>
                       <th className="text-left px-3 py-3 text-xs font-medium tracking-widest uppercase text-brand-gray">Actions</th>
@@ -1441,56 +1440,85 @@ export default function AdminPage() {
                             <SizeStockCell product={p} onUpdated={loadProducts} />
                           </td>
 
-                          {/* Price — click to edit, shows compare_price if set */}
+                          {/* Price — original price, click to edit */}
                           <td className="px-3 py-2">
                             {priceEdit ? (
-                              <div className="space-y-1.5">
-                                <div className="flex gap-1 items-center">
-                                  <span className="text-xs text-brand-gray w-16">Sale ₱</span>
-                                  <input
-                                    type="number" autoFocus min="0" step="0.01"
-                                    value={editPrices[p.id]}
-                                    onChange={e => setEditPrices(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter')  savePrice(p);
-                                      if (e.key === 'Escape') setEditPrices(prev => { const n={...prev}; delete n[p.id]; return n; });
-                                    }}
-                                    className="w-20 border border-brand-orange px-2 py-1 text-xs focus:outline-none"
-                                  />
-                                </div>
-                                <div className="flex gap-1 items-center">
-                                  <span className="text-xs text-brand-gray w-16">Was ₱</span>
-                                  <input
-                                    type="number" min="0" step="0.01" placeholder="optional"
-                                    defaultValue={p.compare_price || ''}
-                                    id={`compare-${p.id}`}
-                                    className="w-20 border border-brand-light px-2 py-1 text-xs focus:outline-none focus:border-brand-gray"
-                                  />
-                                </div>
-                                <div className="flex gap-1">
-                                  <button onClick={() => savePrice(p)} className="text-xs bg-brand-orange text-white px-2 py-1">✓ Save</button>
-                                  <button onClick={() => setEditPrices(prev => { const n={...prev}; delete n[p.id]; return n; })} className="text-xs text-brand-gray hover:text-brand-black px-1">✕</button>
-                                </div>
+                              <div className="flex gap-1 items-center">
+                                <input
+                                  type="number" autoFocus min="0" step="0.01"
+                                  value={editPrices[p.id]}
+                                  onChange={e => setEditPrices(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter')  savePrice(p);
+                                    if (e.key === 'Escape') setEditPrices(prev => { const n={...prev}; delete n[p.id]; return n; });
+                                  }}
+                                  className="w-24 border border-brand-orange px-2 py-1 text-xs focus:outline-none"
+                                />
+                                <button onClick={() => savePrice(p)} className="text-xs bg-brand-orange text-white px-2 py-1">✓</button>
+                                <button onClick={() => setEditPrices(prev => { const n={...prev}; delete n[p.id]; return n; })} className="text-xs text-brand-gray hover:text-brand-black">✕</button>
                               </div>
                             ) : (
                               <button
                                 onClick={() => setEditPrices(prev => ({ ...prev, [p.id]: String(p.price) }))}
-                                className="text-left hover:opacity-80 transition-opacity"
-                                title="Click to edit price / discount"
+                                className="text-sm font-medium text-brand-black hover:text-brand-orange transition-colors"
+                                title="Click to edit price"
                               >
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-sm font-medium text-brand-black">{formatPrice(p.price)}</span>
-                                  {p.compare_price && p.compare_price > p.price && (
-                                    <span className="text-xs text-red-500 font-medium bg-red-50 px-1 py-0.5 rounded">
-                                      -{Math.round((1 - p.price / p.compare_price) * 100)}%
-                                    </span>
-                                  )}
-                                </div>
-                                {p.compare_price && p.compare_price > p.price && (
-                                  <span className="text-xs text-brand-gray line-through">{formatPrice(p.compare_price)}</span>
-                                )}
+                                {formatPrice(p.price)}
                               </button>
                             )}
+                          </td>
+
+                          {/* Sale Price — compare_price, separate column */}
+                          <td className="px-3 py-2">
+                            {(() => {
+                              const saleId = `sale-${p.id}`;
+                              const isEditing = editPrices[saleId] !== undefined;
+                              return isEditing ? (
+                                <div className="flex gap-1 items-center">
+                                  <input
+                                    type="number" autoFocus min="0" step="0.01" placeholder="0"
+                                    value={editPrices[saleId]}
+                                    onChange={e => setEditPrices(prev => ({ ...prev, [saleId]: e.target.value }))}
+                                    onKeyDown={async e => {
+                                      if (e.key === 'Enter') {
+                                        const val = parseFloat(editPrices[saleId]) || null;
+                                        setProducts(prev => prev.map(x => x.id === p.id ? { ...x, compare_price: val } : x));
+                                        setEditPrices(prev => { const n={...prev}; delete n[saleId]; return n; });
+                                        await supabase.from('products').update({ compare_price: val }).eq('id', p.id);
+                                        toast.success('Sale price saved ✅');
+                                      }
+                                      if (e.key === 'Escape') setEditPrices(prev => { const n={...prev}; delete n[saleId]; return n; });
+                                    }}
+                                    className="w-24 border border-red-400 px-2 py-1 text-xs focus:outline-none"
+                                  />
+                                  <button onClick={async () => {
+                                    const val = parseFloat(editPrices[saleId]) || null;
+                                    setProducts(prev => prev.map(x => x.id === p.id ? { ...x, compare_price: val } : x));
+                                    setEditPrices(prev => { const n={...prev}; delete n[saleId]; return n; });
+                                    await supabase.from('products').update({ compare_price: val }).eq('id', p.id);
+                                    toast.success('Sale price saved ✅');
+                                  }} className="text-xs bg-red-500 text-white px-2 py-1">✓</button>
+                                  <button onClick={() => setEditPrices(prev => { const n={...prev}; delete n[saleId]; return n; })} className="text-xs text-brand-gray">✕</button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setEditPrices(prev => ({ ...prev, [saleId]: String(p.compare_price || '') }))}
+                                  className="text-left group/sale"
+                                  title="Click to set sale price"
+                                >
+                                  {p.compare_price && p.compare_price > p.price ? (
+                                    <div>
+                                      <span className="text-sm font-medium text-red-600">{formatPrice(p.compare_price)}</span>
+                                      <span className="ml-1.5 text-xs font-bold text-white bg-red-500 px-1 py-0.5">
+                                        -{Math.round((1 - p.price / p.compare_price) * 100)}%
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-brand-light group-hover/sale:text-brand-orange transition-colors">+ add</span>
+                                  )}
+                                </button>
+                              );
+                            })()}
                           </td>
 
                           {/* Stock — total across all sizes */}
