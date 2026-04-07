@@ -158,9 +158,21 @@ export default async function HomePage() {
                       <h3 className="font-medium text-brand-black text-sm sm:text-base mb-1 group-hover:text-brand-orange transition-colors">
                         {product.name}
                       </h3>
-                      <p className="font-serif text-lg text-brand-black">
-                        {formatPrice(product.price, product.currency)}
-                      </p>
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <p className="font-serif text-lg text-brand-black">
+                          {formatPrice(product.price, product.currency)}
+                        </p>
+                        {product.compare_price && product.compare_price > product.price && (
+                          <p className="font-serif text-sm text-brand-gray line-through">
+                            {formatPrice(product.compare_price)}
+                          </p>
+                        )}
+                        {product.compare_price && product.compare_price > product.price && (
+                          <span className="text-xs font-bold text-white bg-red-500 px-1.5 py-0.5">
+                            -{Math.round((1 - product.price / product.compare_price) * 100)}%
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </Link>
                 );

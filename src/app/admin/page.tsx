@@ -274,12 +274,13 @@ function EditProductModal({ product, onClose, onSaved }: {
   const CATEGORIES = ['Tops','Bottoms','Dresses','Outerwear','Accessories','Sets','Kids'];
 
   const [form, setForm] = useState({
-    name:        product.name,
-    description: product.description || '',
-    price:       String(product.price),
-    category:    product.category,
-    status:      product.status,
-    stock:       String(product.inventory?.[0]?.quantity ?? 0),
+    name:          product.name,
+    description:   product.description || '',
+    price:         String(product.price),
+    compare_price: String(product.compare_price || ''),
+    category:      product.category,
+    status:        product.status,
+    stock:         String(product.inventory?.[0]?.quantity ?? 0),
   });
 
   // Per-size stock — load from product.size_inventory
@@ -341,14 +342,16 @@ function EditProductModal({ product, onClose, onSaved }: {
       }
 
       // Update product — use .select() to confirm row was updated
+      const comparePrice = parseFloat(form.compare_price) || null;
       const { data: updatedRows, error: pe } = await supabase
         .from('products')
         .update({
-          name:        form.name.trim(),
-          description: form.description.trim(),
+          name:          form.name.trim(),
+          description:   form.description.trim(),
           price,
-          category:    form.category,
-          status:      form.status,
+          compare_price: comparePrice && comparePrice > price ? comparePrice : null,
+          category:      form.category,
+          status:        form.status,
         })
         .eq('id', product.id)
         .select();
@@ -452,19 +455,37 @@ function EditProductModal({ product, onClose, onSaved }: {
               className="input-field" placeholder="e.g. Linen Blazer" />
           </div>
 
-          {/* Price + Category */}
+          {/* Price + Compare Price + Category */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="input-label">Price (PHP) *</label>
+              <label className="input-label">Sale Price (PHP) *</label>
               <input type="number" value={form.price} min="0" step="0.01"
                 onChange={e => f('price', e.target.value)} className="input-field" />
             </div>
             <div>
-              <label className="input-label">Category</label>
-              <select value={form.category} onChange={e => f('category', e.target.value)} className="input-field">
-                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-              </select>
+              <label className="input-label">Original Price (optional)</label>
+              <input type="number" value={form.compare_price} min="0" step="0.01"
+                placeholder="e.g. 1500"
+                onChange={e => f('compare_price', e.target.value)} className="input-field" />
+              <p className="text-xs text-brand-gray mt-1">Shows as <span className="line-through">₱1,500</span> → crossed out</p>
             </div>
+          </div>
+          {/* Discount badge preview */}
+          {form.compare_price && parseFloat(form.compare_price) > parseFloat(form.price || '0') && (
+            <div className="bg-red-50 border border-red-100 px-4 py-2 flex items-center gap-3">
+              <span className="text-xs text-brand-gray">Preview:</span>
+              <span className="text-sm font-bold text-brand-black">₱{parseFloat(form.price).toLocaleString()}</span>
+              <span className="text-xs text-brand-gray line-through">₱{parseFloat(form.compare_price).toLocaleString()}</span>
+              <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5">
+                -{Math.round((1 - parseFloat(form.price) / parseFloat(form.compare_price)) * 100)}% OFF
+              </span>
+            </div>
+          )}
+          <div>
+            <label className="input-label">Category</label>
+            <select value={form.category} onChange={e => f('category', e.target.value)} className="input-field">
+              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
           </div>
 
           {/* Status */}
@@ -1164,11 +1185,14 @@ export default function AdminPage() {
   const savePrice = async (p: Product) => {
     const val = parseFloat(editPrices[p.id]);
     if (isNaN(val)) return;
+    // Read compare_price from DOM input if visible
+    const compareInput = document.getElementById(`compare-${p.id}`) as HTMLInputElement;
+    const compareVal   = compareInput ? parseFloat(compareInput.value) || null : p.compare_price;
     // Optimistic update
-    setProducts(prev => prev.map(x => x.id === p.id ? { ...x, price: val } : x));
+    setProducts(prev => prev.map(x => x.id === p.id ? { ...x, price: val, compare_price: compareVal } : x));
     setEditPrices(prev => { const n = {...prev}; delete n[p.id]; return n; });
     toast.success('Price saved ✅');
-    await supabase.from('products').update({ price: val }).eq('id', p.id);
+    await supabase.from('products').update({ price: val, compare_price: compareVal }).eq('id', p.id);
   };
 
   const saveStock = async (p: Product) => {
@@ -1417,30 +1441,54 @@ export default function AdminPage() {
                             <SizeStockCell product={p} onUpdated={loadProducts} />
                           </td>
 
-                          {/* Price — click to edit */}
+                          {/* Price — click to edit, shows compare_price if set */}
                           <td className="px-3 py-2">
                             {priceEdit ? (
-                              <div className="flex gap-1 items-center">
-                                <input
-                                  type="number" autoFocus min="0" step="0.01"
-                                  value={editPrices[p.id]}
-                                  onChange={e => setEditPrices(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter')  savePrice(p);
-                                    if (e.key === 'Escape') setEditPrices(prev => { const n={...prev}; delete n[p.id]; return n; });
-                                  }}
-                                  className="w-24 border border-brand-orange px-2 py-1 text-xs focus:outline-none"
-                                />
-                                <button onClick={() => savePrice(p)} className="text-xs bg-brand-orange text-white px-2 py-1">✓</button>
-                                <button onClick={() => setEditPrices(prev => { const n={...prev}; delete n[p.id]; return n; })} className="text-xs text-brand-gray hover:text-brand-black">✕</button>
+                              <div className="space-y-1.5">
+                                <div className="flex gap-1 items-center">
+                                  <span className="text-xs text-brand-gray w-16">Sale ₱</span>
+                                  <input
+                                    type="number" autoFocus min="0" step="0.01"
+                                    value={editPrices[p.id]}
+                                    onChange={e => setEditPrices(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter')  savePrice(p);
+                                      if (e.key === 'Escape') setEditPrices(prev => { const n={...prev}; delete n[p.id]; return n; });
+                                    }}
+                                    className="w-20 border border-brand-orange px-2 py-1 text-xs focus:outline-none"
+                                  />
+                                </div>
+                                <div className="flex gap-1 items-center">
+                                  <span className="text-xs text-brand-gray w-16">Was ₱</span>
+                                  <input
+                                    type="number" min="0" step="0.01" placeholder="optional"
+                                    defaultValue={p.compare_price || ''}
+                                    id={`compare-${p.id}`}
+                                    className="w-20 border border-brand-light px-2 py-1 text-xs focus:outline-none focus:border-brand-gray"
+                                  />
+                                </div>
+                                <div className="flex gap-1">
+                                  <button onClick={() => savePrice(p)} className="text-xs bg-brand-orange text-white px-2 py-1">✓ Save</button>
+                                  <button onClick={() => setEditPrices(prev => { const n={...prev}; delete n[p.id]; return n; })} className="text-xs text-brand-gray hover:text-brand-black px-1">✕</button>
+                                </div>
                               </div>
                             ) : (
                               <button
                                 onClick={() => setEditPrices(prev => ({ ...prev, [p.id]: String(p.price) }))}
-                                className="text-sm font-medium text-brand-black hover:text-brand-orange transition-colors"
-                                title="Click to edit price"
+                                className="text-left hover:opacity-80 transition-opacity"
+                                title="Click to edit price / discount"
                               >
-                                {formatPrice(p.price)}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm font-medium text-brand-black">{formatPrice(p.price)}</span>
+                                  {p.compare_price && p.compare_price > p.price && (
+                                    <span className="text-xs text-red-500 font-medium bg-red-50 px-1 py-0.5 rounded">
+                                      -{Math.round((1 - p.price / p.compare_price) * 100)}%
+                                    </span>
+                                  )}
+                                </div>
+                                {p.compare_price && p.compare_price > p.price && (
+                                  <span className="text-xs text-brand-gray line-through">{formatPrice(p.compare_price)}</span>
+                                )}
                               </button>
                             )}
                           </td>

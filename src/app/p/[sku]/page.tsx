@@ -43,6 +43,14 @@ export default async function ProductPage({
     .rpc('get_product_with_stock', { p_sku: sku })
     .single() as { data: Record<string, any> | null; error: any };
 
+  // Fetch compare_price (not returned by RPC)
+  const { data: priceData } = await supabase
+    .from('products')
+    .select('compare_price')
+    .eq('sku', sku)
+    .single();
+  const comparePrice: number | null = priceData?.compare_price ?? null;
+
   // Fetch size inventory separately
   const { data: sizeInventory } = await supabase
     .from('size_inventory')
@@ -117,13 +125,27 @@ export default async function ProductPage({
               </h1>
 
               {/* Price */}
-              <div className="flex items-baseline gap-3 mb-6">
-                <span className="font-serif text-3xl font-medium text-brand-black">
-                  {formatPrice(product.price, product.currency)}
-                </span>
-                <span className="text-sm text-brand-gray tracking-wide">
-                  {product.currency}
-                </span>
+              <div className="mb-6">
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <span className="font-serif text-3xl font-medium text-brand-black">
+                    {formatPrice(product.price, product.currency)}
+                  </span>
+                  {comparePrice && comparePrice > product.price && (
+                    <span className="font-serif text-xl text-brand-gray line-through">
+                      {formatPrice(comparePrice, product.currency)}
+                    </span>
+                  )}
+                  {comparePrice && comparePrice > product.price && (
+                    <span className="text-xs font-bold text-white bg-red-500 px-2 py-1 tracking-wide">
+                      {Math.round((1 - product.price / comparePrice) * 100)}% OFF
+                    </span>
+                  )}
+                </div>
+                {comparePrice && comparePrice > product.price && (
+                  <p className="text-xs text-green-600 mt-1 font-medium">
+                    You save {formatPrice(comparePrice - product.price)}
+                  </p>
+                )}
               </div>
 
               {/* Stock Status */}
