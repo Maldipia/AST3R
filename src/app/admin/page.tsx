@@ -1289,7 +1289,7 @@ export default function AdminPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        {['IMG','SKU','Product','Sizes','Price','Sale','Stock','Status',''].map((h,i) => (
+                        {['IMG','SKU','Product','Sizes','Price','Sale','Stock','QR','Status',''].map((h,i) => (
                           <th key={i} className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -1373,6 +1373,23 @@ export default function AdminPage() {
                                 </button>
                               )}
                             </td>
+                            {/* QR Code */}
+                            <td className="px-3 py-3" onClick={e=>e.stopPropagation()}>
+                              <a
+                                href={'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='+encodeURIComponent(APP+'/p/'+p.sku)+'&bgcolor=FFFFFF&color=000000&margin=8'}
+                                download={p.sku+'.png'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={'Download QR for '+p.sku}
+                                className="block group/qr">
+                                <img
+                                  src={'https://api.qrserver.com/v1/create-qr-code/?size=60x60&data='+encodeURIComponent(APP+'/p/'+p.sku)+'&bgcolor=FAFAFA&color=0A0A0A&margin=4'}
+                                  alt={p.sku}
+                                  className="w-10 h-10 rounded-sm border border-gray-100 group-hover/qr:border-orange-400 transition-colors"
+                                />
+                              </a>
+                            </td>
+
                             <td className="px-3 py-3"><Badge s={p.status} /></td>
                             <td className="px-3 py-3" onClick={e=>e.stopPropagation()}>
                               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
