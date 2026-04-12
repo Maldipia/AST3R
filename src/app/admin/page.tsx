@@ -11,6 +11,13 @@ import { formatPrice, formatDate } from '@/lib/utils';
 // ── Types ──────────────────────────────────────────────────────
 type Tab = 'dashboard' | 'products' | 'orders' | 'analytics' | 'promos' | 'reviews' | 'qr' | 'settings';
 
+type PaymentMethod = {
+  id: string; type: string; label: string;
+  account_name: string | null; account_number: string | null;
+  qr_url: string | null; instructions: string | null;
+  active: boolean; sort_order: number;
+};
+
 type Product = {
   id: string; sku: string; name: string; description: string;
   price: number; compare_price: number | null; currency: string;
@@ -608,6 +615,8 @@ export default function AdminPage() {
   const [editStocks, setEditStocks] = useState<Record<string,string>>({});
   const [stats, setStats] = useState({ orders:0, revenue:0, pending:0, products:0, lowStock:0 });
   const [sideOpen, setSideOpen] = useState(false);
+  const [payMethods, setPayMethods] = useState<PaymentMethod[]>([]);
+  const [pmUploading, setPmUploading] = useState<string | null>(null);
 
   const NAV = [
     { id:'dashboard', label:'Dashboard',  icon:'🏠' },
@@ -631,7 +640,7 @@ export default function AdminPage() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    await Promise.all([loadProducts(), loadOrders(), loadPromos(), loadReviews(), loadAnalytics()]);
+    await Promise.all([loadProducts(), loadOrders(), loadPromos(), loadReviews(), loadAnalytics(), loadPayMethods()]);
     setLoading(false);
   }, []);
 
@@ -671,6 +680,31 @@ export default function AdminPage() {
     const byDay: Record<string,number> = {};
     ords.forEach(o => { const d=o.created_at?.slice(0,10)||''; if(d) byDay[d]=(byDay[d]||0)+Number(o.total_amount); });
     setAnalytics({ revenue, byStatus, byRegion, byDay, total:ords.length });
+  };
+
+  const loadPayMethods = async () => {
+    const { data } = await supabase.from('payment_qr_codes').select('*').order('sort_order');
+    if (data) setPayMethods(data as PaymentMethod[]);
+  };
+
+  const uploadPayQR = async (pm: PaymentMethod, file: File) => {
+    setPmUploading(pm.id);
+    const t = toast.loading('Uploading QR...');
+    try {
+      const fn  = 'qr-' + pm.type + '-' + Date.now() + '.png';
+      const { error } = await supabase.storage.from('payment-qr').upload(fn, file, { upsert: true });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('payment-qr').getPublicUrl(fn);
+      await supabase.from('payment_qr_codes').update({ qr_url: publicUrl }).eq('id', pm.id);
+      toast.dismiss(t); toast.success(pm.label + ' QR uploaded!');
+      loadPayMethods();
+    } catch (e: any) { toast.dismiss(t); toast.error(e.message); }
+    finally { setPmUploading(null); }
+  };
+
+  const updatePayMethod = async (pm: PaymentMethod, updates: Partial<PaymentMethod>) => {
+    await supabase.from('payment_qr_codes').update(updates).eq('id', pm.id);
+    loadPayMethods();
   };
 
   // Filtered & paginated products
@@ -1377,38 +1411,136 @@ export default function AdminPage() {
 
           {/* ══ SETTINGS ══════════════════════════════════════════ */}
           {tab === 'settings' && (
-            <div className="max-w-lg space-y-5">
-              {[
-                { title:'Store Info', rows:[
-                  { label:'Store URL', value:'ast3r.store' }, { label:'Admin Email', value:'admin@ast3r.store' },
-                  { label:'Contact', value:'inquiry@ast3r.store' }, { label:'Phone', value:'0966 960 6060' },
-                  { label:'Instagram', value:'@ast3r.ph' }, { label:'Location', value:'Tagaytay City, PH' },
-                ]},
-                { title:'Shipping Rates', rows:[
-                  { label:'Metro Manila (NCR)', value:'P100 - 2-3 days' }, { label:'Luzon', value:'P150 - 3-5 days' },
-                  { label:'Visayas', value:'P200 - 5-7 days' }, { label:'Mindanao', value:'P250 - 5-7 days' },
-                  { label:'International', value:'P800 - 7-21 days' },
-                ]},
-                { title:'System', rows:[
-                  { label:'Products', value:String(stats.products) }, { label:'Total Orders', value:String(stats.orders) },
-                  { label:'Revenue', value:formatPrice(stats.revenue) }, { label:'Framework', value:'Next.js 14' },
-                  { label:'Database', value:'Supabase (PostgreSQL)' }, { label:'Hosting', value:'Vercel' },
-                ]},
-              ].map(({ title, rows }) => (
-                <div key={title} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                  <div className="px-5 py-4 border-b border-gray-100">
-                    <h3 className="font-semibold text-gray-900 text-sm">{title}</h3>
+            <div className="max-w-3xl space-y-6">
+
+              {/* Payment Methods & QR Codes */}
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Payment Methods & QR Codes</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">Upload your GCash/bank QR codes - they show on the checkout page</p>
                   </div>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {payMethods.map(pm => {
+                    const pmRef = useRef<HTMLInputElement>(null);
+                    const ICONS: Record<string, string> = { gcash:'📱', maya:'💙', bdo:'🏦', bpi:'🏦', cod:'💵', cop:'🏪', later:'🕐' };
+                    return (
+                      <div key={pm.id} className="p-5">
+                        <div className="flex items-start gap-4">
+                          {/* QR preview / upload */}
+                          <div className="flex-shrink-0">
+                            <div className="w-20 h-20 border-2 border-dashed border-gray-200 rounded-xl overflow-hidden relative cursor-pointer hover:border-orange-400 transition-colors group"
+                              onClick={() => !['cod','cop','later'].includes(pm.type) && pmRef.current?.click()}>
+                              {pm.qr_url ? (
+                                <img src={pm.qr_url} alt="" className="w-full h-full object-contain" />
+                              ) : (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                                  <span className="text-2xl">{ICONS[pm.type] || '💳'}</span>
+                                  {!['cod','cop','later'].includes(pm.type) && <p className="text-[9px] text-gray-400 text-center group-hover:text-orange-400">Upload QR</p>}
+                                </div>
+                              )}
+                              {pmUploading === pm.id && (
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                </div>
+                              )}
+                            </div>
+                            {!['cod','cop','later'].includes(pm.type) && (
+                              <input ref={pmRef} type="file" accept="image/*" className="hidden"
+                                onChange={e => { const f = e.target.files?.[0]; if (f) uploadPayQR(pm, f); e.target.value = ''; }} />
+                            )}
+                          </div>
+
+                          {/* Details */}
+                          <div className="flex-1 min-w-0 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-gray-900 text-sm">{pm.label}</span>
+                              <button onClick={() => updatePayMethod(pm, { active: !pm.active })}
+                                className={`text-xs px-2 py-0.5 rounded-sm ${pm.active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                                {pm.active ? 'Active' : 'Hidden'}
+                              </button>
+                            </div>
+                            {!['cod','cop','later'].includes(pm.type) && (
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-[10px] text-gray-400 uppercase tracking-wider">Account Name</label>
+                                  <input defaultValue={pm.account_name || ''}
+                                    onBlur={e => { if (e.target.value !== pm.account_name) updatePayMethod(pm, { account_name: e.target.value }); }}
+                                    placeholder="AST3R Fashion"
+                                    className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs mt-1 focus:outline-none focus:border-orange-400" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] text-gray-400 uppercase tracking-wider">Number / Account No.</label>
+                                  <input defaultValue={pm.account_number || ''}
+                                    onBlur={e => { if (e.target.value !== pm.account_number) updatePayMethod(pm, { account_number: e.target.value }); }}
+                                    placeholder="09XX XXX XXXX"
+                                    className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs mt-1 font-mono focus:outline-none focus:border-orange-400" />
+                                </div>
+                              </div>
+                            )}
+                            <div>
+                              <label className="text-[10px] text-gray-400 uppercase tracking-wider">Instructions for customer</label>
+                              <input defaultValue={pm.instructions || ''}
+                                onBlur={e => { if (e.target.value !== pm.instructions) updatePayMethod(pm, { instructions: e.target.value }); }}
+                                placeholder="Payment instructions..."
+                                className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs mt-1 focus:outline-none focus:border-orange-400" />
+                            </div>
+                            {!['cod','cop','later'].includes(pm.type) && !pm.qr_url && (
+                              <button onClick={() => pmRef.current?.click()}
+                                className="text-xs text-orange-500 underline">Upload {pm.label} QR Code</button>
+                            )}
+                            {pm.qr_url && (
+                              <button onClick={() => pmRef.current?.click()}
+                                className="text-xs text-gray-400 underline">Change QR Code</button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Store Info */}
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="px-5 py-4 border-b border-gray-100"><h3 className="font-semibold text-gray-900 text-sm">Store Info</h3></div>
+                <div className="divide-y divide-gray-50">
+                  {[{ label:'Store URL', value:'ast3r.store' },{ label:'Admin Email', value:'admin@ast3r.store' },{ label:'Contact', value:'inquiry@ast3r.store' },{ label:'Phone', value:'0966 960 6060' },{ label:'Instagram', value:'@ast3r.ph' },{ label:'Location', value:'Tagaytay City, PH' }].map(({ label, value }) => (
+                    <div key={label} className="flex justify-between items-center px-5 py-3">
+                      <span className="text-xs text-gray-500 uppercase tracking-wider">{label}</span>
+                      <span className="text-xs font-semibold text-gray-700">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Shipping + System */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-5 py-4 border-b border-gray-100"><h3 className="font-semibold text-gray-900 text-sm">Shipping Rates</h3></div>
                   <div className="divide-y divide-gray-50">
-                    {rows.map(({ label, value }) => (
-                      <div key={label} className="flex justify-between items-center px-5 py-3">
-                        <span className="text-xs text-gray-500 uppercase tracking-wider">{label}</span>
+                    {[{ label:'Metro Manila', value:'P100' },{ label:'Luzon', value:'P150' },{ label:'Visayas', value:'P200' },{ label:'Mindanao', value:'P250' },{ label:'International', value:'P800' }].map(({ label, value }) => (
+                      <div key={label} className="flex justify-between px-5 py-2.5">
+                        <span className="text-xs text-gray-500">{label}</span>
+                        <span className="text-xs font-bold text-gray-700">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-5 py-4 border-b border-gray-100"><h3 className="font-semibold text-gray-900 text-sm">System</h3></div>
+                  <div className="divide-y divide-gray-50">
+                    {[{ label:'Products', value:String(stats.products) },{ label:'Orders', value:String(stats.orders) },{ label:'Revenue', value:formatPrice(stats.revenue) },{ label:'Stack', value:'Next.js + Supabase' }].map(({ label, value }) => (
+                      <div key={label} className="flex justify-between px-5 py-2.5">
+                        <span className="text-xs text-gray-500">{label}</span>
                         <span className="text-xs font-semibold text-gray-700">{value}</span>
                       </div>
                     ))}
                   </div>
                 </div>
-              ))}
+              </div>
+
               <button onClick={signOut} className="w-full border border-red-200 text-red-500 py-3 text-sm rounded-xl hover:bg-red-50 transition-colors">Sign Out</button>
             </div>
           )}
