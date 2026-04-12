@@ -15,9 +15,19 @@ export default function HomePage() {
   const [activecat, setActiveCat] = useState('All');
 
   useEffect(() => {
-    supabase.from('products').select('*, inventory(quantity)')
+    supabase.from('products').select('id, sku, name, price, compare_price, image_url, category, status, inventory(quantity)')
       .eq('status', 'active').order('created_at', { ascending: false })
-      .then(({ data }) => { setProducts(data || []); setLoading(false); });
+      .then(({ data }) => {
+        // Deduplicate by SKU (join can produce duplicates)
+        const seen = new Set<string>();
+        const unique = (data || []).filter(p => {
+          if (seen.has(p.sku)) return false;
+          seen.add(p.sku);
+          return true;
+        });
+        setProducts(unique);
+        setLoading(false);
+      });
   }, []);
 
   const categories = useMemo(() => ['All', ...new Set(products.map(p => p.category))], [products]);
