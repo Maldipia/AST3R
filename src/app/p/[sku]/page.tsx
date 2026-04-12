@@ -8,7 +8,7 @@ import OrderButton     from './OrderButton';
 import Header          from '@/components/Header';
 import QRDownload      from './QRDownload';
 import ReviewForm      from './ReviewForm';
-import ShareButton     from './ShareButton';
+import ShareCopyButton from './ShareCopyButton';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
 
@@ -42,48 +42,39 @@ export default async function ProductPage({
 }) {
   const { sku } = params;
 
-  // Fetch product with stock and size inventory
+  // Fetch product first — notFound early if missing
   const { data: product, error } = await supabase
     .rpc('get_product_with_stock', { p_sku: sku })
     .single() as { data: Record<string, any> | null; error: any };
 
-  // Fetch compare_price (not returned by RPC)
-  const { data: priceData } = await supabase
-    .from('products')
-    .select('compare_price')
-    .eq('sku', sku)
-    .single();
-  const comparePrice: number | null = priceData?.compare_price ?? null;
-
-  // Fetch size inventory separately
-  const { data: sizeInventory } = await supabase
-    .from('size_inventory')
-    .select('size, quantity')
-    .eq('sku', sku)
-    .order('size');
-
   if (error || !product) notFound();
+
+  const prod = product as Record<string, any>;
+
+  // Fetch all related data in parallel
+  const [priceRes, sizeRes, relatedRes, reviewsRes] = await Promise.all([
+    supabase.from('products').select('compare_price').eq('sku', sku).single(),
+    supabase.from('size_inventory').select('size, quantity').eq('sku', sku).order('size'),
+    supabase.from('products').select('sku, name, price, compare_price, image_url, category')
+      .eq('status', 'active').eq('category', prod.category).neq('sku', sku).limit(4),
+    supabase.from('reviews').select('customer_name, rating, comment, created_at')
+      .eq('sku', sku).eq('verified', true).order('created_at', { ascending: false }),
+  ]);
+
+  const comparePrice: number | null  = priceRes.data?.compare_price ?? null;
+  const sizeInventory                = sizeRes.data || [];
+  const relatedProducts              = relatedRes.data || [];
+  const reviews                      = reviewsRes.data || [];
+
+  const avgRating = reviews.length
+    ? (reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length).toFixed(1)
+    : null;
 
   // Track QR scan (non-blocking)
   supabase.rpc('track_qr_scan', { p_sku: sku }).then(() => {});
 
-  // Fetch related products (same category, different SKU)
-  const { data: relatedProducts } = await supabase
-    .from('products').select('sku, name, price, compare_price, image_url, category')
-    .eq('status', 'active').eq('category', product.category)
-    .neq('sku', sku).limit(4);
-
-  // Fetch verified reviews
-  const { data: reviews } = await supabase
-    .from('reviews').select('customer_name, rating, comment, created_at')
-    .eq('sku', sku).eq('verified', true).order('created_at', { ascending: false });
-
-  const avgRating = reviews?.length
-    ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
-    : null;
-
-  const hasSizes    = sizeInventory && sizeInventory.length > 0;
-  const totalSizeQty = hasSizes ? sizeInventory!.reduce((sum, s) => sum + s.quantity, 0) : (product.quantity ?? 0);
+  const hasSizes     = sizeInventory.length > 0;
+  const totalSizeQty = hasSizes ? sizeInventory.reduce((sum: number, s: any) => sum + s.quantity, 0) : (prod.quantity ?? 0);
   const { label: stockLabel, color: stockColor } = getStockLabel(totalSizeQty);
   const inStock = totalSizeQty > 0;
 
@@ -97,10 +88,10 @@ export default async function ProductPage({
 
             {/* ── LEFT: Product Image ──────────────────────── */}
             <div className="relative bg-brand-cream overflow-hidden" style={{ minHeight: '60vw', maxHeight: '90vh' }}>
-              {product.image_url ? (
+              {prod.image_url ? (
                 <Image
-                  src={product.image_url}
-                  alt={product.name}
+                  src={prod.image_url}
+                  alt={prod.name}
                   fill
                   className="object-cover"
                   priority
@@ -115,14 +106,14 @@ export default async function ProductPage({
               {/* Category tag */}
               <div className="absolute top-6 left-6">
                 <span className="bg-brand-white/90 backdrop-blur-sm px-3 py-1 text-xs tracking-widest uppercase font-medium text-brand-gray">
-                  {product.category}
+                  {prod.category}
                 </span>
               </div>
 
               {/* SKU tag */}
               <div className="absolute bottom-6 right-6">
                 <span className="bg-brand-black/80 backdrop-blur-sm px-3 py-1 text-xs tracking-widest text-brand-white font-mono">
-                  {product.sku}
+                  {prod.sku}
                 </span>
               </div>
             </div>
@@ -134,41 +125,41 @@ export default async function ProductPage({
               <div className="flex items-center gap-2 mb-8">
                 <span className="accent-line" />
                 <span className="text-xs tracking-widest uppercase text-brand-gray font-medium">
-                  {product.category}
+                  {prod.category}
                 </span>
               </div>
 
               {/* Product Name */}
               <h1 className="display-lg text-brand-black mb-6 leading-tight">
-                {product.name}
+                {prod.name}
               </h1>
 
               {/* Price */}
               <div className="mb-6">
                 <div className="flex items-baseline gap-3 flex-wrap">
-                  {comparePrice && comparePrice < product.price ? (
+                  {comparePrice && comparePrice < prod.price ? (
                     <>
                       {/* Sale price — big and prominent */}
                       <span className="font-serif text-3xl font-medium text-red-600">
-                        {formatPrice(comparePrice, product.currency)}
+                        {formatPrice(comparePrice, prod.currency)}
                       </span>
                       {/* Original price — crossed out */}
                       <span className="font-serif text-xl text-brand-gray line-through">
-                        {formatPrice(product.price, product.currency)}
+                        {formatPrice(prod.price, prod.currency)}
                       </span>
                       <span className="text-xs font-bold text-white bg-red-500 px-2 py-1 tracking-wide">
-                        {Math.round((1 - comparePrice / product.price) * 100)}% OFF
+                        {Math.round((1 - comparePrice / prod.price) * 100)}% OFF
                       </span>
                     </>
                   ) : (
                     <span className="font-serif text-3xl font-medium text-brand-black">
-                      {formatPrice(product.price, product.currency)}
+                      {formatPrice(prod.price, prod.currency)}
                     </span>
                   )}
                 </div>
-                {comparePrice && comparePrice < product.price && (
+                {comparePrice && comparePrice < prod.price && (
                   <p className="text-xs text-green-600 mt-1 font-medium">
-                    You save {formatPrice(product.price - comparePrice)}
+                    You save {formatPrice(prod.price - comparePrice)}
                   </p>
                 )}
               </div>
@@ -210,16 +201,16 @@ export default async function ProductPage({
 
               {/* Description */}
               <p className="text-brand-gray text-sm leading-relaxed mb-10 max-w-md">
-                {product.description}
+                {prod.description}
               </p>
 
               {/* CTA */}
               <OrderButton
-                sku={product.sku}
-                name={product.name}
-                price={product.price}
+                sku={prod.sku}
+                name={prod.name}
+                price={prod.price}
                 salePrice={comparePrice}
-                imageUrl={product.image_url}
+                imageUrl={prod.image_url}
                 inStock={inStock}
               />
 
@@ -238,13 +229,13 @@ export default async function ProductPage({
               </div>
 
               {/* QR Download (admin use) */}
-              <QRDownload sku={product.sku} productName={product.name} />
+              <QRDownload sku={prod.sku} productName={prod.name} />
 
               {/* Share buttons */}
               <div className="mt-8 pt-8 border-t border-brand-light">
                 <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-3">Share</p>
                 <div className="flex gap-2 flex-wrap">
-                  <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_URL + '/p/' + product.sku)}`}
+                  <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_URL + '/p/' + prod.sku)}`}
                     target="_blank" rel="noopener noreferrer"
                     className="flex items-center gap-1.5 text-xs border border-brand-light px-3 py-2 text-brand-gray hover:border-brand-black transition-all">
                     📘 Facebook
@@ -253,7 +244,7 @@ export default async function ProductPage({
                     className="flex items-center gap-1.5 text-xs border border-brand-light px-3 py-2 text-brand-gray hover:border-brand-black transition-all">
                     📷 @ast3r.ph
                   </a>
-                  <ShareButton url={`${APP_URL}/p/${product.sku}`} />
+                  <ShareButton url={`${APP_URL}/p/${prod.sku}`} />
                 </div>
               </div>
 
@@ -328,7 +319,7 @@ export default async function ProductPage({
             )}
 
             {/* Leave a review form */}
-            <ReviewForm sku={product.sku} />
+            <ReviewForm sku={prod.sku} />
           </div>
         </div>
 
