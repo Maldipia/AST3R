@@ -8,6 +8,9 @@ import OrderButton     from './OrderButton';
 import Header          from '@/components/Header';
 import QRDownload      from './QRDownload';
 import ReviewForm      from './ReviewForm';
+import ShareButton     from './ShareButton';
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
 
 // ── Generate static metadata per SKU ─────────────────────────
 export async function generateMetadata(
@@ -240,21 +243,17 @@ export default async function ProductPage({
               {/* Share buttons */}
               <div className="mt-8 pt-8 border-t border-brand-light">
                 <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-3">Share</p>
-                <div className="flex gap-2">
-                  {[
-                    { label: 'Facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store'}/p/${product.sku}`)}`, icon: '📘' },
-                    { label: 'Instagram', href: `https://instagram.com`, icon: '📷' },
-                    { label: 'Copy Link', href: '#', icon: '🔗', copy: true },
-                  ].map(({ label, href, icon, copy }) => (
-                    <a key={label}
-                      href={href}
-                      target={copy ? undefined : '_blank'}
-                      rel="noopener noreferrer"
-                      onClick={copy ? (e) => { e.preventDefault(); navigator.clipboard.writeText(window.location.href); } : undefined}
-                      className="flex items-center gap-1.5 text-xs border border-brand-light px-3 py-2 text-brand-gray hover:border-brand-black hover:text-brand-black transition-all">
-                      {icon} {label}
-                    </a>
-                  ))}
+                <div className="flex gap-2 flex-wrap">
+                  <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_URL + '/p/' + product.sku)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs border border-brand-light px-3 py-2 text-brand-gray hover:border-brand-black transition-all">
+                    📘 Facebook
+                  </a>
+                  <a href="https://instagram.com/ast3r.ph" target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs border border-brand-light px-3 py-2 text-brand-gray hover:border-brand-black transition-all">
+                    📷 @ast3r.ph
+                  </a>
+                  <ShareButton url={`${APP_URL}/p/${product.sku}`} />
                 </div>
               </div>
 
@@ -275,12 +274,12 @@ export default async function ProductPage({
                     </thead>
                     <tbody>
                       {[
-                        ['XS','30–32','24–26','33–35','5'0–5'2"'],
-                        ['S', '33–34','26–28','35–37','5'2–5'4"'],
-                        ['M', '35–36','28–30','37–39','5'4–5'6"'],
-                        ['L', '37–39','31–33','40–42','5'6–5'8"'],
-                        ['XL','40–42','34–36','43–45','5'8–5'10"'],
-                        ['XXL','43–46','37–40','46–49','5'10–6'0"'],
+                        ['XS','30–32 in','24–26 in','33–35 in','5'0–5'2"'],
+                        ['S', '33–34 in','26–28 in','35–37 in','5'2–5'4"'],
+                        ['M', '35–36 in','28–30 in','37–39 in','5'4–5'6"'],
+                        ['L', '37–39 in','31–33 in','40–42 in','5'6–5'8"'],
+                        ['XL','40–42 in','34–36 in','43–45 in','5'8–5'10"'],
+                        ['XXL','43–46 in','37–40 in','46–49 in','5'10–6'0"'],
                         ['Free Size','Fits S–L','—','—','5'2–5'7"'],
                       ].map(row => (
                         <tr key={row[0]} className="hover:bg-brand-cream">
