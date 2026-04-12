@@ -605,33 +605,37 @@ function QuickAdd({ onAdded }: { onAdded: () => void }) {
 
 // ── MAIN ───────────────────────────────────────────────────────
 export default function AdminPage() {
-  const router = useRouter();
+  const router   = useRouter();
   const [, startT] = useTransition();
-  const [tab,        setTab]        = useState<Tab>('dashboard');
-  const [user,       setUser]       = useState<any>(null);
-  const [products,   setProducts]   = useState<Product[]>([]);
-  const [orders,     setOrders]     = useState<Order[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [search,     setSearch]     = useState('');
-  const [catFilter,  setCatFilter]  = useState('');
-  const [page,       setPage]       = useState(0);
-  const [editProd,   setEditProd]   = useState<Product | null>(null);
-  const [showCSV,    setShowCSV]    = useState(false);
-  const [qrSku,      setQrSku]      = useState('');
-  const [qrProd,     setQrProd]     = useState<Product | null>(null);
-  const [genZip,     setGenZip]     = useState(false);
-  const [editPrices, setEditPrices] = useState<Record<string, string>>({});
-  const [editStock,  setEditStock]  = useState<Record<string, string>>({});
-  const [orderSearch, setOrderSearch] = useState('');
-  const [orderFilter, setOrderFilter] = useState('');
-  const [stats, setStats] = useState({ orders: 0, revenue: 0, pending: 0, products: 0, lowStock: 0 });
 
-  // Auth
+  // ── State ──────────────────────────────────────────────────
+  const [tab,          setTab]          = useState<'dashboard'|'products'|'orders'|'qr'>('products');
+  const [sideOpen,     setSideOpen]     = useState(false);
+  const [user,         setUser]         = useState<any>(null);
+  const [products,     setProducts]     = useState<Product[]>([]);
+  const [orders,       setOrders]       = useState<Order[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [search,       setSearch]       = useState('');
+  const [catFilter,    setCatFilter]    = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page,         setPage]         = useState(0);
+  const [editPrices,   setEditPrices]   = useState<Record<string,string>>({});
+  const [editStock,    setEditStock]    = useState<Record<string,string>>({});
+  const [editing,      setEditing]      = useState<Product|null>(null);
+  const [showCSV,      setShowCSV]      = useState(false);
+  const [showBulk,     setShowBulk]     = useState(false);
+  const [qrSku,        setQrSku]        = useState('');
+  const [qrProduct,    setQrProduct]    = useState<Product|null>(null);
+  const [genZip,       setGenZip]       = useState(false);
+  const [orderSearch,  setOrderSearch]  = useState('');
+  const [orderStatus,  setOrderStatus]  = useState('');
+
+  // ── Auth ───────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { router.push('/admin/login'); return; }
-      const { data: admin } = await supabase.from('admin_profiles').select('role').eq('id', user.id).single();
-      if (!admin) { await supabase.auth.signOut(); router.push('/admin/login'); return; }
+      const { data: adm } = await supabase.from('admin_profiles').select('role').eq('id', user.id).single();
+      if (!adm) { await supabase.auth.signOut(); router.push('/admin/login'); return; }
       setUser(user); loadAll();
     });
   }, []);
@@ -643,134 +647,117 @@ export default function AdminPage() {
   }, []);
 
   const loadProducts = async () => {
-    const { data } = await supabase.from('products')
+    const { data } = await supabase
+      .from('products')
       .select('*, inventory(quantity), size_inventory(size,quantity)')
       .order('created_at', { ascending: false });
-    if (data) {
-      setProducts(data as Product[]);
-      const low = data.filter(p => (p.inventory?.[0]?.quantity ?? 0) <= 3 && (p.inventory?.[0]?.quantity ?? 0) > 0).length;
-      setStats(s => ({ ...s, products: data.length, lowStock: low }));
-    }
+    if (data) setProducts(data as Product[]);
   };
 
   const loadOrders = async () => {
-    const { data } = await supabase.from('orders')
+    const { data } = await supabase
+      .from('orders')
       .select('*, payments(payment_method,status,payment_proof_url), order_items(sku,quantity,price)')
-      .order('created_at', { ascending: false }).limit(200);
-    if (data) {
-      setOrders(data as Order[]);
-      setStats(s => ({
-        ...s, orders: data.length,
-        revenue: data.reduce((sum, o) => sum + Number(o.total_amount), 0),
-        pending: data.filter(o => o.status === 'pending').length,
-      }));
-    }
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (data) setOrders(data as Order[]);
   };
 
-  // Filtered products
+  // ── Stats ──────────────────────────────────────────────────
+  const stats = useMemo(() => ({
+    totalProducts: products.length,
+    activeProducts: products.filter(p => p.status === 'active').length,
+    outOfStock: products.filter(p => (p.size_inventory?.length ? p.size_inventory.reduce((s,x) => s+x.quantity,0) : p.inventory?.[0]?.quantity ?? 0) === 0).length,
+    onSale: products.filter(p => p.compare_price && p.compare_price < p.price).length,
+    totalOrders: orders.length,
+    pendingOrders: orders.filter(o => o.status === 'pending').length,
+    paidOrders: orders.filter(o => o.status === 'paid').length,
+    revenue: orders.filter(o => o.status !== 'cancelled').reduce((s,o) => s + Number(o.total_amount), 0),
+  }), [products, orders]);
+
+  // ── Filtered products ──────────────────────────────────────
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return products.filter(p =>
-      (!q || p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)) &&
-      (!catFilter || p.category === catFilter)
-    );
-  }, [products, search, catFilter]);
+    let list = products;
+    if (search)      list = list.filter(p => p.sku.toLowerCase().includes(search.toLowerCase()) || p.name.toLowerCase().includes(search.toLowerCase()));
+    if (catFilter)   list = list.filter(p => p.category === catFilter);
+    if (statusFilter) list = list.filter(p => p.status === statusFilter);
+    return list;
+  }, [products, search, catFilter, statusFilter]);
 
+  useEffect(() => setPage(0), [search, catFilter, statusFilter]);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paginated  = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  useEffect(() => setPage(0), [search, catFilter]);
+  const paginated  = filtered.slice(page * PAGE_SIZE, (page+1) * PAGE_SIZE);
 
-  // Filtered orders
+  // ── Filtered orders ────────────────────────────────────────
   const filteredOrders = useMemo(() => {
-    const q = orderSearch.toLowerCase();
-    return orders.filter(o =>
-      (!q || o.order_code.toLowerCase().includes(q) || o.customer_name.toLowerCase().includes(q)) &&
-      (!orderFilter || o.status === orderFilter)
-    );
-  }, [orders, orderSearch, orderFilter]);
+    let list = orders;
+    if (orderSearch) list = list.filter(o => o.order_code.toLowerCase().includes(orderSearch.toLowerCase()) || o.customer_name.toLowerCase().includes(orderSearch.toLowerCase()));
+    if (orderStatus) list = list.filter(o => o.status === orderStatus);
+    return list;
+  }, [orders, orderSearch, orderStatus]);
 
-  // Mutations — all non-blocking (optimistic first, DB after)
+  // ── Mutations (all optimistic) ─────────────────────────────
   const savePrice = (p: Product) => {
-    const val = parseFloat(editPrices[p.id]);
-    if (isNaN(val)) return;
-    startT(() => {
-      setProducts(prev => prev.map(x => x.id === p.id ? { ...x, price: val } : x));
-      setEditPrices(prev => { const n = { ...prev }; delete n[p.id]; return n; });
-    });
-    toast.success('Price saved ✅', { duration: 1200 });
+    const val = parseFloat(editPrices[p.id]); if (isNaN(val)) return;
+    setProducts(prev => prev.map(x => x.id === p.id ? {...x, price: val} : x));
+    setEditPrices(prev => { const n={...prev}; delete n[p.id]; return n; });
+    toast.success('Price saved');
     supabase.from('products').update({ price: val }).eq('id', p.id);
   };
-
-  const saveSale = (p: Product, saleId: string) => {
+  const saveSalePrice = async (p: Product, saleId: string) => {
     const val = parseFloat(editPrices[saleId]) || null;
-    if (val && val >= p.price) { toast.error('Sale price must be lower than ₱' + p.price); return; }
-    startT(() => {
-      setProducts(prev => prev.map(x => x.id === p.id ? { ...x, compare_price: val } : x));
-      setEditPrices(prev => { const n = { ...prev }; delete n[saleId]; return n; });
-    });
-    toast.success('Sale price saved ✅', { duration: 1200 });
-    supabase.from('products').update({ compare_price: val }).eq('id', p.id);
+    if (val && val >= p.price) { toast.error('Sale must be lower than ₱' + p.price); return; }
+    setProducts(prev => prev.map(x => x.id === p.id ? {...x, compare_price: val} : x));
+    setEditPrices(prev => { const n={...prev}; delete n[saleId]; return n; });
+    toast.success(val ? 'Sale price saved' : 'Sale removed');
+    await supabase.from('products').update({ compare_price: val }).eq('id', p.id);
   };
-
   const saveStock = (p: Product) => {
-    const val = parseInt(editStock[p.sku]);
-    if (isNaN(val)) return;
-    startT(() => {
-      setProducts(prev => prev.map(x => x.sku === p.sku ? { ...x, inventory: [{ quantity: val }] } : x));
-      setEditStock(prev => { const n = { ...prev }; delete n[p.sku]; return n; });
-    });
-    toast.success('Stock saved ✅', { duration: 1200 });
+    const val = parseInt(editStock[p.sku]); if (isNaN(val)) return;
+    setProducts(prev => prev.map(x => x.sku === p.sku ? {...x, inventory:[{quantity:val}]} : x));
+    setEditStock(prev => { const n={...prev}; delete n[p.sku]; return n; });
+    toast.success('Stock saved');
     supabase.from('inventory').update({ quantity: val }).eq('sku', p.sku);
   };
-
   const toggleStatus = (p: Product) => {
     const next = p.status === 'active' ? 'inactive' : 'active';
-    startT(() => setProducts(prev => prev.map(x => x.id === p.id ? { ...x, status: next } : x)));
-    toast.success(`${next === 'active' ? '✅' : '⏸'} ${p.sku}`, { duration: 1200 });
+    setProducts(prev => prev.map(x => x.id === p.id ? {...x, status: next} : x));
+    toast.success(`${p.sku} ${next}`, {duration:1500});
     supabase.from('products').update({ status: next }).eq('id', p.id);
   };
-
-  const deleteProd = (p: Product) => {
-    if (!confirm(`Delete ${p.sku} — ${p.name}?\nThis cannot be undone.`)) return;
-    startT(() => setProducts(prev => prev.filter(x => x.id !== p.id)));
-    toast.success(`${p.sku} deleted`, { duration: 1500 });
+  const deleteProduct = (p: Product) => {
+    if (!confirm(`Delete ${p.sku}?`)) return;
+    setProducts(prev => prev.filter(x => x.id !== p.id));
+    toast.success(`${p.sku} deleted`);
     supabase.from('products').delete().eq('id', p.id);
   };
-
-  const imgUploaded = (id: string, url: string) => {
-    startT(() => setProducts(prev => prev.map(p => p.id === id ? { ...p, image_url: url } : p)));
+  const updateOrderStatus = (id: string, status: string) => {
+    setOrders(prev => prev.map(o => o.id === id ? {...o, status} : o));
+    supabase.from('orders').update({ status }).eq('id', id);
+    toast.success(`Order: ${status}`, {duration:1500});
   };
-
-  const verifyPay = (orderId: string) => {
-    supabase.from('payments').update({ status: 'verified' }).eq('order_id', orderId);
-    supabase.from('orders').update({ status: 'paid' }).eq('id', orderId);
-    startT(() => setOrders(prev => prev.map(o => o.id === orderId ? {
-      ...o, status: 'paid', payments: o.payments.map(p => ({ ...p, status: 'verified' }))
-    } : o)));
+  const verifyPayment = async (orderId: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? {...o, status:'paid', payments:[{...o.payments[0], status:'verified'}]} : o));
+    await supabase.from('payments').update({ status:'verified' }).eq('order_id', orderId);
+    await supabase.from('orders').update({ status:'paid' }).eq('id', orderId);
     toast.success('Payment verified ✅');
   };
-
-  const rejectPay = (orderId: string) => {
-    supabase.from('payments').update({ status: 'rejected' }).eq('order_id', orderId);
-    startT(() => setOrders(prev => prev.map(o => o.id === orderId ? {
-      ...o, payments: o.payments.map(p => ({ ...p, status: 'rejected' }))
-    } : o)));
+  const rejectPayment = async (orderId: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? {...o, payments:[{...o.payments[0], status:'rejected'}]} : o));
+    await supabase.from('payments').update({ status:'rejected' }).eq('order_id', orderId);
     toast.success('Payment rejected');
   };
 
-  const setOrderStatus = (orderId: string, status: string) => {
-    supabase.from('orders').update({ status }).eq('id', orderId);
-    startT(() => setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o)));
-    toast.success(`Order: ${status}`, { duration: 1200 });
-  };
+  const signOut = async () => { await supabase.auth.signOut(); router.push('/admin/login'); };
 
+  // ── QR ─────────────────────────────────────────────────────
   const searchQR = async () => {
-    const { data } = await supabase.from('products').select('*, inventory(quantity)').eq('sku', qrSku.trim().toUpperCase()).single();
-    setQrProd(data as Product || null);
+    if (!qrSku.trim()) return;
+    const { data } = await supabase.from('products').select('*, inventory(quantity), size_inventory(size,quantity)').eq('sku', qrSku.trim().toUpperCase()).single();
+    setQrProduct(data as Product || null);
     if (!data) toast.error('SKU not found');
   };
-
-  const downloadAllQR = async () => {
+  const genAllQR = async () => {
     setGenZip(true);
     const t = toast.loading('Generating ZIP…');
     try {
@@ -778,394 +765,351 @@ export default function AdminPage() {
       const zip = new JSZip();
       for (const p of products) {
         const url = `${APP_URL}/p/${p.sku}`;
-        const qr  = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=20&format=png`;
-        zip.file(`${p.sku}.png`, await (await fetch(qr)).blob());
+        const res = await fetch(`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=20&format=png`);
+        zip.file(`${p.sku}.png`, await res.blob());
       }
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = 'ast3r-qr-codes.zip'; a.click();
-      toast.dismiss(t); toast.success(`✅ ${products.length} QR codes!`);
-    } catch (e: any) { toast.dismiss(t); toast.error(e.message); }
+      const blob = await zip.generateAsync({ type:'blob' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'ast3r-qr.zip'; a.click();
+      toast.dismiss(t); toast.success(`✅ ${products.length} QR codes ready!`);
+    } catch(e:any) { toast.dismiss(t); toast.error(e.message); }
     finally { setGenZip(false); }
   };
 
-  const signOut = async () => { await supabase.auth.signOut(); router.push('/admin/login'); };
-
   if (loading) return (
-    <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
-      <div className="text-center">
-        <p className="font-serif text-3xl tracking-[0.2em] text-white">AST3R</p>
-        <p className="text-[#555] text-xs mt-3 animate-pulse tracking-widest">Loading admin…</p>
+    <div className="min-h-screen bg-brand-black flex items-center justify-center">
+      <div className="text-center space-y-3">
+        <span className="font-serif text-4xl tracking-[0.2em] text-white">AST3R</span>
+        <p className="text-xs text-gray-500 tracking-widest uppercase animate-pulse">Loading…</p>
       </div>
     </div>
   );
 
+  // ── NAV ITEMS ──────────────────────────────────────────────
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: '◈', badge: 0 },
-    { id: 'products',  label: 'Products',  icon: '◧', badge: stats.lowStock },
-    { id: 'orders',    label: 'Orders',    icon: '◫', badge: stats.pending },
-    { id: 'qr',        label: 'QR Codes',  icon: '⬡', badge: 0 },
+    { id: 'dashboard', label: 'Dashboard',  icon: '📊' },
+    { id: 'products',  label: `Products (${stats.activeProducts})`, icon: '👗' },
+    { id: 'orders',    label: `Orders (${stats.pendingOrders} pending)`, icon: '📋' },
+    { id: 'qr',        label: 'QR Codes',    icon: '📲' },
   ] as const;
 
   return (
-    <div className="min-h-screen bg-[#F0EEE9] flex">
-      {editProd && <EditModal product={editProd} onClose={() => setEditProd(null)} onSaved={loadProducts} />}
-      {showCSV  && <CSVModal onClose={() => setShowCSV(false)} onDone={loadProducts} />}
+    <div className="min-h-screen bg-[#F6F6F4] flex">
+      {/* Modals */}
+      {showCSV  && <CSVModal  onClose={() => setShowCSV(false)}  onDone={loadProducts} />}
+      {editing  && <EditModal product={editing} onClose={() => setEditing(null)} onSaved={loadProducts} />}
 
-      {/* ── SIDEBAR ──────────────────────────────────────────── */}
-      <aside className="w-14 sm:w-52 bg-[#0A0A0A] flex flex-col flex-shrink-0 sticky top-0 h-screen z-40">
+      {/* ── SIDEBAR ─────────────────────────────────────────── */}
+      {/* Mobile overlay */}
+      {sideOpen && <div className="fixed inset-0 bg-black/50 z-30 lg:hidden" onClick={() => setSideOpen(false)} />}
 
+      <aside className={`
+        fixed top-0 left-0 h-full z-40 flex flex-col
+        bg-[#0A0A0A] text-white w-64 transition-transform duration-300
+        ${sideOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:flex
+      `}>
         {/* Logo */}
-        <div className="px-4 py-5 border-b border-white/5">
-          <p className="font-serif text-white text-lg tracking-[0.25em] hidden sm:block">AST3R</p>
-          <p className="font-serif text-white text-center sm:hidden text-lg">A</p>
-          <p className="text-white/25 text-[10px] mt-0.5 tracking-widest hidden sm:block">ADMIN PANEL</p>
+        <div className="px-6 py-6 border-b border-white/10">
+          <span className="font-serif text-2xl tracking-[0.2em]">AST3R</span>
+          <p className="text-[10px] text-gray-500 tracking-widest uppercase mt-1">Admin Portal</p>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-3 space-y-0.5 px-2">
-          {navItems.map(n => (
-            <button key={n.id} onClick={() => setTab(n.id)}
-              className={`w-full flex items-center gap-3 px-2 sm:px-3 py-3 transition-all group ${
-                tab === n.id
-                  ? 'bg-brand-orange text-white'
-                  : 'text-white/40 hover:bg-white/5 hover:text-white/80'
-              }`}>
-              <span className="text-base flex-shrink-0 sm:text-sm font-mono">{n.icon}</span>
-              <span className="text-[11px] font-medium tracking-wide hidden sm:block">{n.label}</span>
-              {n.badge > 0 && (
-                <span className="ml-auto hidden sm:flex w-4 h-4 rounded-full bg-red-500 text-white text-[10px] items-center justify-center font-bold">
-                  {n.badge > 9 ? '9+' : n.badge}
-                </span>
-              )}
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {navItems.map(({ id, label, icon }) => (
+            <button key={id} onClick={() => { setTab(id as any); setSideOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left transition-all rounded-none
+                ${tab === id
+                  ? 'bg-[#E8571A] text-white font-medium'
+                  : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                }`}>
+              <span>{icon}</span>
+              <span className="tracking-wide">{label}</span>
             </button>
           ))}
         </nav>
 
-        {/* Store link + sign out */}
-        <div className="px-3 py-4 border-t border-white/5 space-y-2">
-          <a href="/" target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-2 text-white/30 hover:text-white/70 transition-colors px-1">
-            <span className="text-xs hidden sm:block tracking-wide">View Store ↗</span>
-            <span className="text-xs sm:hidden">↗</span>
+        {/* Store link */}
+        <div className="px-4 py-4 border-t border-white/10 space-y-2">
+          <a href={APP_URL} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors">
+            🌐 <span>View Store</span>
           </a>
-          <p className="text-white/20 text-[10px] truncate hidden sm:block px-1">{user?.email}</p>
+          <div className="px-3 py-2">
+            <p className="text-[11px] text-gray-600 truncate">{user?.email}</p>
+          </div>
           <button onClick={signOut}
-            className="flex items-center gap-2 text-white/30 hover:text-red-400 transition-colors px-1 w-full">
-            <span className="text-xs">→</span>
-            <span className="text-[11px] hidden sm:block">Sign Out</span>
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-500 hover:text-red-400 transition-colors text-left">
+            → Sign Out
           </button>
         </div>
       </aside>
 
-      {/* ── MAIN ─────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto min-w-0">
+      {/* ── MAIN CONTENT ─────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col min-w-0">
 
-        {/* Top bar */}
-        <div className="bg-white border-b border-[#E8E4DF] px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-30">
-          <div className="flex items-center gap-3">
-            <div>
-              <h1 className="font-serif text-lg text-brand-black capitalize leading-tight">
-                {tab === 'dashboard' ? 'Overview' : tab}
-              </h1>
-              <p className="text-[11px] text-[#B8B4AE] tracking-wide">ast3r.store</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {tab === 'products' && (
-              <>
-                <button onClick={() => setShowCSV(true)}
-                  className="hidden sm:flex items-center gap-1.5 border border-[#E2DED8] px-3 py-2 text-xs text-brand-gray hover:border-brand-black hover:text-brand-black transition-colors bg-white">
-                  📄 CSV
-                </button>
-                <button onClick={() => { setTab('products'); setTimeout(() => document.getElementById('quick-add')?.scrollIntoView({ behavior: 'smooth' }), 100); }}
-                  className="bg-brand-orange text-white px-4 py-2 text-xs font-medium hover:bg-orange-600 transition-colors">
-                  + Product
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+        {/* Top bar (mobile) */}
+        <header className="lg:hidden bg-white border-b border-gray-200 px-4 h-14 flex items-center justify-between sticky top-0 z-20">
+          <button onClick={() => setSideOpen(true)} className="text-gray-600 hover:text-black">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+          </button>
+          <span className="font-serif text-lg tracking-[0.15em]">AST3R</span>
+          <a href={APP_URL} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-400">Store →</a>
+        </header>
 
-        <div className="p-4 sm:p-6">
+        <main className="flex-1 p-4 lg:p-8 overflow-auto">
 
           {/* ══ DASHBOARD ════════════════════════════════════ */}
           {tab === 'dashboard' && (
-            <div className="space-y-5">
-              {/* Stats */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="space-y-6 max-w-5xl">
+              <div>
+                <h1 className="font-serif text-2xl text-gray-900">Good day! 👋</h1>
+                <p className="text-sm text-gray-500 mt-1">Here's your store at a glance.</p>
+              </div>
+
+              {/* Stat cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { label: 'Products', value: stats.products, sub: `${stats.lowStock} low stock`, icon: '◧', warning: stats.lowStock > 0, action: () => setTab('products') },
-                  { label: 'Orders',   value: stats.orders,   sub: `${stats.pending} pending`,    icon: '◫', warning: stats.pending > 0,  action: () => setTab('orders') },
-                  { label: 'Revenue',  value: formatPrice(stats.revenue), sub: 'all time', icon: '₱', warning: false, action: () => setTab('orders') },
-                  { label: 'Pending',  value: stats.pending,  sub: 'need action',  icon: '⏳', warning: stats.pending > 0,  action: () => setTab('orders') },
-                ].map(({ label, value, sub, icon, warning, action }) => (
-                  <button key={label} onClick={action}
-                    className={`bg-white border p-5 text-left hover:shadow-sm transition-all ${
-                      warning ? 'border-amber-200 bg-amber-50' : 'border-[#E8E4DF]'
-                    }`}>
-                    <div className="flex items-start justify-between mb-3">
-                      <span className="text-[#B8B4AE] font-mono text-sm">{icon}</span>
-                      {warning && <span className="w-2 h-2 bg-amber-400 rounded-full mt-1" />}
-                    </div>
-                    <p className="font-serif text-2xl font-medium text-brand-black">{value}</p>
-                    <p className="text-[11px] text-[#B8B4AE] uppercase tracking-widest mt-1">{label}</p>
-                    <p className="text-[11px] text-[#C8C4BE] mt-0.5">{sub}</p>
-                  </button>
+                  { label: 'Total Revenue', value: formatPrice(stats.revenue), sub: 'all time', color: 'bg-[#E8571A]', text: 'text-white' },
+                  { label: 'Pending Orders', value: stats.pendingOrders, sub: `of ${stats.totalOrders} total`, color: 'bg-amber-50', text: 'text-amber-800', action: () => setTab('orders') },
+                  { label: 'Active Products', value: stats.activeProducts, sub: `${stats.outOfStock} out of stock`, color: 'bg-white', text: 'text-gray-900', action: () => setTab('products') },
+                  { label: 'On Sale', value: stats.onSale, sub: 'products with discount', color: 'bg-red-50', text: 'text-red-800', action: () => setTab('products') },
+                ].map(({ label, value, sub, color, text, action }) => (
+                  <div key={label} onClick={action}
+                    className={`${color} ${text} p-5 border border-black/5 ${action ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}>
+                    <p className="text-xs font-medium uppercase tracking-widest opacity-70 mb-2">{label}</p>
+                    <p className="font-serif text-3xl font-medium">{value}</p>
+                    <p className="text-xs mt-1 opacity-60">{sub}</p>
+                  </div>
                 ))}
               </div>
 
-              {/* Quick actions */}
-              <div className="bg-white border border-[#E8E4DF] p-5">
-                <p className="text-[11px] font-semibold text-[#B8B4AE] uppercase tracking-widest mb-4">Quick Actions</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    { label: 'Add Product',  icon: '➕', fn: () => { setTab('products'); setTimeout(() => document.getElementById('quick-add')?.scrollIntoView({ behavior: 'smooth' }), 100); } },
-                    { label: 'CSV Import',   icon: '📄', fn: () => setShowCSV(true) },
-                    { label: 'View Orders',  icon: '📋', fn: () => setTab('orders') },
-                    { label: 'QR Codes',     icon: '⬡',  fn: () => setTab('qr') },
-                  ].map(({ label, icon, fn }) => (
-                    <button key={label} onClick={fn}
-                      className="border border-[#E8E4DF] py-4 flex flex-col items-center gap-2 hover:border-brand-orange hover:text-brand-orange transition-all text-[#B8B4AE]">
-                      <span className="text-2xl">{icon}</span>
-                      <span className="text-[11px] font-medium">{label}</span>
-                    </button>
-                  ))}
+              {/* Recent orders */}
+              <div className="bg-white border border-gray-200">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                  <h2 className="font-medium text-sm">Recent Orders</h2>
+                  <button onClick={() => setTab('orders')} className="text-xs text-[#E8571A] hover:underline">View all →</button>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {orders.slice(0,5).map(o => {
+                    const pay = o.payments?.[0];
+                    return (
+                      <div key={o.id} className="flex items-center gap-4 px-5 py-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-medium text-gray-900">{o.order_code}</span>
+                            <Pill status={o.status} />
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">{o.customer_name} · {o.contact_number}</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="font-serif text-sm font-medium">{formatPrice(o.total_amount)}</p>
+                          <p className="text-xs text-gray-400">{pay?.payment_method}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {orders.length === 0 && <p className="px-5 py-8 text-sm text-gray-400 text-center">No orders yet.</p>}
                 </div>
               </div>
 
-              {/* Recent orders */}
-              {orders.length > 0 && (
-                <div className="bg-white border border-[#E8E4DF] overflow-hidden">
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-[#F0EEE9]">
-                    <p className="text-[11px] font-semibold text-[#B8B4AE] uppercase tracking-widest">Recent Orders</p>
-                    <button onClick={() => setTab('orders')} className="text-xs text-brand-orange hover:opacity-80">View all →</button>
-                  </div>
-                  <div className="divide-y divide-[#F0EEE9]">
-                    {orders.slice(0, 6).map(o => (
-                      <div key={o.id} className="flex items-center justify-between px-5 py-3 hover:bg-[#FAFAF8] transition-colors">
-                        <div className="flex items-center gap-3">
-                          <Pill status={o.status} />
-                          <div>
-                            <p className="font-mono text-xs font-semibold text-brand-black">{o.order_code}</p>
-                            <p className="text-[11px] text-[#B8B4AE]">{o.customer_name} · {o.contact_number}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-brand-black">{formatPrice(o.total_amount)}</p>
-                          <p className="text-[11px] text-[#B8B4AE]">{formatDate(o.created_at)}</p>
-                        </div>
-                      </div>
+              {/* Low stock alert */}
+              {stats.outOfStock > 0 && (
+                <div className="bg-red-50 border border-red-200 p-4">
+                  <p className="text-sm font-medium text-red-700 mb-2">⚠️ Out of stock ({stats.outOfStock} products)</p>
+                  <div className="flex flex-wrap gap-2">
+                    {products.filter(p => {
+                      const qty = p.size_inventory?.length ? p.size_inventory.reduce((s,x) => s+x.quantity,0) : p.inventory?.[0]?.quantity ?? 0;
+                      return qty === 0 && p.status === 'active';
+                    }).slice(0,10).map(p => (
+                      <span key={p.sku} onClick={() => { setTab('products'); setSearch(p.sku); }}
+                        className="font-mono text-xs bg-red-100 text-red-700 px-2 py-1 cursor-pointer hover:bg-red-200">
+                        {p.sku}
+                      </span>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {/* Low stock alert */}
-              {stats.lowStock > 0 && (
-                <div className="flex items-center gap-4 bg-amber-50 border border-amber-200 px-5 py-4">
-                  <span className="text-xl flex-shrink-0">⚠️</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-amber-800">{stats.lowStock} product{stats.lowStock !== 1 ? 's' : ''} running low on stock</p>
-                    <p className="text-xs text-amber-600">Update inventory before they sell out</p>
-                  </div>
-                  <button onClick={() => setTab('products')} className="text-xs font-medium text-amber-700 border border-amber-300 px-3 py-1.5 hover:bg-amber-100 transition-colors">
-                    Review →
-                  </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* ══ PRODUCTS ═════════════════════════════════════ */}
+          {/* ══ PRODUCTS ════════════════════════════════════ */}
           {tab === 'products' && (
             <div className="space-y-4">
-              {/* Toolbar */}
-              <div className="flex flex-wrap gap-2 items-center">
-                <div className="relative flex-1 min-w-48 max-w-xs">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#C8C4BE] text-xs">🔍</span>
-                  <input type="text" placeholder="Search SKU, name…"
-                    value={search} onChange={e => setSearch(e.target.value)}
-                    className="w-full border border-[#E2DED8] pl-8 pr-7 py-2 text-xs focus:outline-none focus:border-brand-black bg-white" />
-                  {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#C8C4BE] hover:text-brand-black text-xs">✕</button>}
+              {/* Page header */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="font-serif text-2xl text-gray-900">Products</h1>
+                  <p className="text-xs text-gray-400 mt-0.5">{filtered.length} of {products.length} shown</p>
                 </div>
-                <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
-                  className="border border-[#E2DED8] px-3 py-2 text-xs focus:outline-none focus:border-brand-black bg-white text-[#888]">
-                  <option value="">All Categories</option>
-                  {CATS.map(c => <option key={c}>{c}</option>)}
-                </select>
-                <button onClick={loadProducts} className="border border-[#E2DED8] px-3 py-2 text-xs bg-white hover:border-brand-black transition-colors text-[#888]">↻</button>
-                <div className="ml-auto flex gap-2">
-                  <button onClick={() => setShowCSV(true)}
-                    className="sm:hidden border border-[#E2DED8] px-3 py-2 text-xs bg-white hover:border-brand-black">📄</button>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={loadProducts} className="px-3 py-2 text-xs border border-gray-200 bg-white hover:border-gray-400 transition-colors">↻</button>
+                  <button onClick={() => setShowCSV(true)} className="px-4 py-2 text-xs border border-gray-900 bg-white hover:bg-gray-900 hover:text-white transition-colors font-medium">📄 CSV Import</button>
+                  <button onClick={() => setEditing({} as any)} className="px-4 py-2 text-xs bg-[#E8571A] text-white hover:bg-orange-600 transition-colors font-medium">+ Add Product</button>
                 </div>
               </div>
 
-              {(search || catFilter) && (
-                <p className="text-[11px] text-[#B8B4AE]">
-                  {filtered.length} result{filtered.length !== 1 ? 's' : ''}
-                  {catFilter && ` in ${catFilter}`}
-                  {search && ` for "${search}"`}
-                </p>
-              )}
+              {/* Filters */}
+              <div className="flex flex-wrap gap-2 bg-white border border-gray-200 p-3">
+                <div className="relative flex-1 min-w-48">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                  <input type="text" placeholder="Search SKU or name…" value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 focus:outline-none focus:border-gray-500" />
+                  {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs">✕</button>}
+                </div>
+                <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
+                  className="border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-500 bg-white">
+                  <option value="">All Categories</option>
+                  {CATS.map(c => <option key={c}>{c}</option>)}
+                </select>
+                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+                  className="border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-500 bg-white">
+                  <option value="">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+                {(search || catFilter || statusFilter) && (
+                  <button onClick={() => { setSearch(''); setCatFilter(''); setStatusFilter(''); }}
+                    className="px-3 py-2 text-xs text-gray-500 hover:text-gray-900 border border-gray-200 bg-white">Clear</button>
+                )}
+              </div>
 
               {/* Table */}
-              <div className="bg-white border border-[#E8E4DF] overflow-hidden">
+              <div className="bg-white border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[700px]">
+                  <table className="w-full text-sm min-w-[900px]">
                     <thead>
-                      <tr className="bg-[#FAFAF8] border-b border-[#F0EEE9]">
-                        {[
-                          { h: '', w: 'w-12' },
-                          { h: 'SKU', w: 'w-28' },
-                          { h: 'Product', w: '' },
-                          { h: 'Sizes', w: 'min-w-[120px]' },
-                          { h: 'Price', w: 'w-28' },
-                          { h: 'Sale ₱', w: 'w-28' },
-                          { h: 'Stock', w: 'w-24' },
-                          { h: 'Status', w: 'w-20' },
-                          { h: '', w: 'w-28' },
-                        ].map(({ h, w }, i) => (
-                          <th key={i} className={`text-left px-3 py-3 text-[10px] font-semibold tracking-widest uppercase text-[#C8C4BE] ${w}`}>{h}</th>
-                        ))}
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold tracking-widest uppercase text-gray-400 w-16">Photo</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold tracking-widest uppercase text-gray-400">SKU / Name</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold tracking-widest uppercase text-gray-400">Category</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold tracking-widest uppercase text-gray-400">Sizes</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold tracking-widest uppercase text-gray-400">Price</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold tracking-widest uppercase text-gray-400 text-red-500">Sale</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold tracking-widest uppercase text-gray-400">Stock</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold tracking-widest uppercase text-gray-400">Status</th>
+                        <th className="px-4 py-3 w-28"></th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-gray-100">
                       {paginated.length === 0 ? (
-                        <tr><td colSpan={9} className="text-center py-16 text-[#C8C4BE] text-sm">
-                          {search ? `No results for "${search}"` : 'No products yet — use Quick Add below'}
+                        <tr><td colSpan={9} className="text-center py-16 text-gray-400">
+                          {search || catFilter ? 'No products match your filters.' : 'No products yet.'}
                         </td></tr>
                       ) : paginated.map(p => {
-                        const stock      = p.inventory?.[0]?.quantity ?? 0;
-                        const sizeTotal  = (p.size_inventory || []).reduce((s, si) => s + si.quantity, 0);
-                        const dispStock  = (p.size_inventory || []).length > 0 ? sizeTotal : stock;
-                        const priceEdit  = editPrices[p.id] !== undefined;
-                        const saleId     = `sale-${p.id}`;
-                        const saleEdit   = editPrices[saleId] !== undefined;
-                        const stockEdit  = editStock[p.sku] !== undefined;
+                        const sizeTotal = p.size_inventory?.length ? p.size_inventory.reduce((s,x) => s+x.quantity,0) : null;
+                        const stock     = sizeTotal ?? p.inventory?.[0]?.quantity ?? 0;
+                        const hasSale   = p.compare_price && p.compare_price < p.price;
+                        const saleId    = `sale-${p.id}`;
+                        const pEdit     = editPrices[p.id] !== undefined;
+                        const saleEdit  = editPrices[saleId] !== undefined;
+                        const stEdit    = editStock[p.sku] !== undefined;
 
                         return (
-                          <tr key={p.id}
-                            className="border-b border-[#F5F3EF] hover:bg-[#FAFAF8] transition-colors group cursor-pointer"
-                            onClick={() => setEditProd(p)}>
+                          <tr key={p.id} className="hover:bg-gray-50 transition-colors group">
 
                             {/* Photo */}
-                            <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
-                              <ImgCell product={p} onDone={imgUploaded} />
+                            <td className="px-4 py-3">
+                              <ImgCell product={p} onDone={(id,url) => setProducts(prev => prev.map(x => x.id===id ? {...x,image_url:url} : x))} />
                             </td>
 
-                            {/* SKU */}
-                            <td className="px-3 py-2">
-                              <span className="font-mono text-[11px] text-[#B8B4AE]">{p.sku}</span>
+                            {/* SKU + Name — click to edit */}
+                            <td className="px-4 py-3 cursor-pointer" onClick={() => setEditing(p)}>
+                              <p className="font-medium text-gray-900 hover:text-[#E8571A] transition-colors">{p.name}</p>
+                              <p className="font-mono text-xs text-gray-400 mt-0.5">{p.sku}</p>
                             </td>
 
-                            {/* Name */}
-                            <td className="px-3 py-2">
-                              <p className="font-medium text-brand-black text-sm leading-tight">{p.name}</p>
-                              <p className="text-[11px] text-[#C8C4BE]">{p.category}</p>
-                            </td>
+                            {/* Category */}
+                            <td className="px-4 py-3 text-xs text-gray-500">{p.category}</td>
 
                             {/* Sizes */}
-                            <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                            <td className="px-4 py-3">
                               <SizeCell product={p} />
                             </td>
 
                             {/* Price */}
-                            <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
-                              {priceEdit ? (
+                            <td className="px-4 py-3">
+                              {pEdit ? (
                                 <div className="flex gap-1">
-                                  <input type="number" autoFocus min="0" step="0.01"
-                                    value={editPrices[p.id]}
-                                    onChange={e => setEditPrices(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter') savePrice(p);
-                                      if (e.key === 'Escape') setEditPrices(prev => { const n = { ...prev }; delete n[p.id]; return n; });
-                                    }}
-                                    className="w-20 border border-brand-orange px-2 py-1 text-xs focus:outline-none" />
-                                  <button onMouseDown={() => savePrice(p)} className="text-[11px] bg-brand-orange text-white px-2 py-1">✓</button>
+                                  <input type="number" autoFocus value={editPrices[p.id]} min="0" step="0.01"
+                                    onChange={e => setEditPrices(prev => ({...prev,[p.id]:e.target.value}))}
+                                    onKeyDown={e => { if(e.key==='Enter') savePrice(p); if(e.key==='Escape') setEditPrices(prev=>{const n={...prev};delete n[p.id];return n;}); }}
+                                    className="w-24 border border-[#E8571A] px-2 py-1 text-xs focus:outline-none" />
+                                  <button onClick={() => savePrice(p)} className="text-xs bg-[#E8571A] text-white px-2">✓</button>
                                 </div>
                               ) : (
-                                <button
-                                  onMouseDown={() => setEditPrices(prev => ({ ...prev, [p.id]: String(p.price) }))}
-                                  className="text-sm font-medium text-brand-black hover:text-brand-orange transition-colors"
-                                  title="Click to edit price">
+                                <button onClick={() => setEditPrices(prev=>({...prev,[p.id]:String(p.price)}))}
+                                  className={`text-sm font-medium hover:text-[#E8571A] transition-colors ${hasSale ? 'text-gray-400 line-through' : 'text-gray-900'}`}
+                                  title="Click to edit">
                                   {formatPrice(p.price)}
                                 </button>
                               )}
                             </td>
 
-                            {/* Sale price */}
-                            <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                            {/* Sale Price */}
+                            <td className="px-4 py-3">
                               {saleEdit ? (
                                 <div className="flex gap-1">
-                                  <input type="number" autoFocus min="0" step="0.01" placeholder="₱"
-                                    value={editPrices[saleId]}
-                                    onChange={e => setEditPrices(prev => ({ ...prev, [saleId]: e.target.value }))}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter') saveSale(p, saleId);
-                                      if (e.key === 'Escape') setEditPrices(prev => { const n = { ...prev }; delete n[saleId]; return n; });
-                                    }}
-                                    className="w-20 border border-red-300 px-2 py-1 text-xs focus:outline-none" />
-                                  <button onMouseDown={() => saveSale(p, saleId)} className="text-[11px] bg-red-500 text-white px-2 py-1">✓</button>
+                                  <input type="number" autoFocus value={editPrices[saleId]} min="0" step="0.01" placeholder="sale ₱"
+                                    onChange={e => setEditPrices(prev => ({...prev,[saleId]:e.target.value}))}
+                                    onKeyDown={e => { if(e.key==='Enter') saveSalePrice(p, saleId); if(e.key==='Escape') setEditPrices(prev=>{const n={...prev};delete n[saleId];return n;}); }}
+                                    className="w-24 border border-red-400 px-2 py-1 text-xs focus:outline-none" />
+                                  <button onClick={() => saveSalePrice(p, saleId)} className="text-xs bg-red-500 text-white px-2">✓</button>
                                 </div>
                               ) : (
-                                <button
-                                  onMouseDown={() => setEditPrices(prev => ({ ...prev, [saleId]: String(p.compare_price || '') }))}
-                                  title="Click to set sale price" className="text-left">
-                                  {p.compare_price && p.compare_price < p.price ? (
-                                    <div>
-                                      <span className="text-sm font-semibold text-red-600">{formatPrice(p.compare_price)}</span>
-                                      <span className="ml-1 text-[10px] font-bold text-white bg-red-500 px-1 py-0.5">
-                                        -{Math.round((1 - p.compare_price / p.price) * 100)}%
+                                <button onClick={() => setEditPrices(prev=>({...prev,[saleId]:String(p.compare_price||'')})) }
+                                  className="text-left group/sale w-full" title="Click to set sale price">
+                                  {hasSale ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-sm font-medium text-red-600">{formatPrice(p.compare_price!)}</span>
+                                      <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5">
+                                        -{Math.round((1-p.compare_price!/p.price)*100)}%
                                       </span>
                                     </div>
                                   ) : (
-                                    <span className="text-[11px] text-[#C8C4BE] hover:text-brand-orange transition-colors">+ add</span>
+                                    <span className="text-xs text-gray-300 group-hover/sale:text-[#E8571A] transition-colors">+ add</span>
                                   )}
                                 </button>
                               )}
                             </td>
 
                             {/* Stock */}
-                            <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
-                              {stockEdit ? (
+                            <td className="px-4 py-3">
+                              {stEdit ? (
                                 <div className="flex gap-1">
-                                  <input type="number" autoFocus min="0"
-                                    value={editStock[p.sku]}
-                                    onChange={e => setEditStock(prev => ({ ...prev, [p.sku]: e.target.value }))}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter') saveStock(p);
-                                      if (e.key === 'Escape') setEditStock(prev => { const n = { ...prev }; delete n[p.sku]; return n; });
-                                    }}
-                                    className="w-16 border border-brand-orange px-2 py-1 text-xs focus:outline-none" />
-                                  <button onMouseDown={() => saveStock(p)} className="text-[11px] bg-brand-orange text-white px-2 py-1">✓</button>
+                                  <input type="number" autoFocus value={editStock[p.sku]} min="0"
+                                    onChange={e => setEditStock(prev=>({...prev,[p.sku]:e.target.value}))}
+                                    onKeyDown={e => { if(e.key==='Enter') saveStock(p); if(e.key==='Escape') setEditStock(prev=>{const n={...prev};delete n[p.sku];return n;}); }}
+                                    className="w-20 border border-[#E8571A] px-2 py-1 text-xs focus:outline-none" />
+                                  <button onClick={() => saveStock(p)} className="text-xs bg-[#E8571A] text-white px-2">✓</button>
                                 </div>
                               ) : (
-                                <button
-                                  onMouseDown={() => setEditStock(prev => ({ ...prev, [p.sku]: String(dispStock) }))}
-                                  className={`text-xs font-bold hover:underline ${dispStock <= 0 ? 'text-red-500' : dispStock <= 5 ? 'text-amber-500' : 'text-emerald-600'}`}
+                                <button onClick={() => setEditStock(prev=>({...prev,[p.sku]:String(stock)}))}
+                                  className={`text-xs font-semibold hover:underline ${stock<=0?'text-red-500':stock<=5?'text-orange-500':'text-emerald-600'}`}
                                   title="Click to edit stock">
-                                  {dispStock}u
+                                  {stock} units
                                 </button>
                               )}
                             </td>
 
                             {/* Status */}
-                            <td className="px-3 py-2"><Pill status={p.status} /></td>
+                            <td className="px-4 py-3"><Pill status={p.status} /></td>
 
                             {/* Actions */}
-                            <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                            <td className="px-4 py-3">
                               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onMouseDown={() => setEditProd(p)} title="Edit"
-                                  className="text-[11px] px-2 py-1.5 border border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white transition-colors">✏️</button>
-                                <a href={`/p/${p.sku}`} target="_blank" rel="noopener noreferrer" title="View page"
-                                  className="text-[11px] px-2 py-1.5 border border-[#E2DED8] hover:border-brand-black transition-colors">🔗</a>
-                                <button onMouseDown={() => toggleStatus(p)} title={p.status === 'active' ? 'Deactivate' : 'Activate'}
-                                  className="text-[11px] px-2 py-1.5 border border-[#E2DED8] hover:border-brand-black transition-colors">
-                                  {p.status === 'active' ? '⏸' : '▶'}
+                                <button onClick={() => setEditing(p)} title="Edit"
+                                  className="p-1.5 text-xs border border-gray-200 hover:border-[#E8571A] hover:text-[#E8571A] transition-colors">✏️</button>
+                                <a href={`/p/${p.sku}`} target="_blank" rel="noopener noreferrer" title="View"
+                                  className="p-1.5 text-xs border border-gray-200 hover:border-gray-500 transition-colors">🔗</a>
+                                <button onClick={() => toggleStatus(p)} title="Toggle status"
+                                  className="p-1.5 text-xs border border-gray-200 hover:border-gray-500 transition-colors">
+                                  {p.status==='active' ? '⏸' : '▶'}
                                 </button>
-                                <button onMouseDown={() => deleteProd(p)} title="Delete"
-                                  className="text-[11px] px-2 py-1.5 border border-[#E2DED8] text-[#C8C4BE] hover:border-red-400 hover:text-red-500 hover:bg-red-50 transition-colors">✕</button>
+                                <button onClick={() => deleteProduct(p)} title="Delete"
+                                  className="p-1.5 text-xs border border-gray-200 hover:border-red-400 hover:text-red-500 transition-colors">🗑</button>
                               </div>
                             </td>
                           </tr>
@@ -1177,19 +1121,19 @@ export default function AdminPage() {
 
                 {/* Pagination */}
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-[#F0EEE9] bg-[#FAFAF8] text-[11px]">
-                    <span className="text-[#C8C4BE]">{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
+                    <span>{page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE,filtered.length)} of {filtered.length}</span>
                     <div className="flex gap-1">
-                      <button onClick={() => setPage(x => Math.max(0, x - 1))} disabled={page === 0}
-                        className="px-3 py-1.5 border border-[#E2DED8] hover:border-brand-black disabled:opacity-30 transition-colors">←</button>
-                      {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => (
-                        <button key={i} onClick={() => setPage(i)}
-                          className={`px-3 py-1.5 border transition-colors ${i === page ? 'border-brand-black bg-brand-black text-white' : 'border-[#E2DED8] hover:border-brand-black'}`}>
-                          {i + 1}
+                      <button onClick={() => setPage(p=>Math.max(0,p-1))} disabled={page===0}
+                        className="px-3 py-1.5 border border-gray-200 hover:border-gray-400 disabled:opacity-30">← Prev</button>
+                      {Array.from({length:totalPages},(_,i)=>(
+                        <button key={i} onClick={()=>setPage(i)}
+                          className={`px-3 py-1.5 border transition-colors ${i===page?'border-gray-900 bg-gray-900 text-white':'border-gray-200 hover:border-gray-400'}`}>
+                          {i+1}
                         </button>
                       ))}
-                      <button onClick={() => setPage(x => Math.min(totalPages - 1, x + 1))} disabled={page === totalPages - 1}
-                        className="px-3 py-1.5 border border-[#E2DED8] hover:border-brand-black disabled:opacity-30 transition-colors">→</button>
+                      <button onClick={() => setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1}
+                        className="px-3 py-1.5 border border-gray-200 hover:border-gray-400 disabled:opacity-30">Next →</button>
                     </div>
                   </div>
                 )}
@@ -1198,96 +1142,101 @@ export default function AdminPage() {
               {/* Quick Add */}
               <QuickAdd onAdded={loadProducts} />
 
-              <p className="text-[11px] text-[#C8C4BE] text-center">
-                Click row to edit · Hover photo to upload · Click price / stock to edit inline · Hover for actions
+              <p className="text-xs text-gray-400 text-center">
+                Click <strong>name</strong> to edit · Click <strong>image</strong> to upload · Click <strong>price</strong>, <strong>sale</strong>, or <strong>stock</strong> to edit inline · Hover row for actions
               </p>
             </div>
           )}
 
-          {/* ══ ORDERS ═══════════════════════════════════════ */}
+          {/* ══ ORDERS ══════════════════════════════════════ */}
           {tab === 'orders' && (
             <div className="space-y-4">
-              {/* Filters */}
-              <div className="flex flex-wrap gap-2">
-                <div className="relative flex-1 min-w-48 max-w-xs">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#C8C4BE] text-xs">🔍</span>
-                  <input type="text" placeholder="Order code or customer…"
-                    value={orderSearch} onChange={e => setOrderSearch(e.target.value)}
-                    className="w-full border border-[#E2DED8] pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-brand-black bg-white" />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="font-serif text-2xl text-gray-900">Orders</h1>
+                  <p className="text-xs text-gray-400 mt-0.5">{filteredOrders.length} orders</p>
                 </div>
-                <div className="flex gap-1">
-                  {['', 'pending', 'paid', 'shipped', 'cancelled'].map(s => (
-                    <button key={s} onClick={() => setOrderFilter(s)}
-                      className={`px-3 py-2 text-[11px] border transition-colors ${
-                        orderFilter === s ? 'border-brand-black bg-brand-black text-white' : 'border-[#E2DED8] text-[#888] bg-white hover:border-brand-black'
-                      }`}>{s || 'All'}</button>
-                  ))}
-                </div>
-                <button onClick={loadOrders} className="border border-[#E2DED8] px-3 py-2 text-xs bg-white hover:border-brand-black transition-colors text-[#888] ml-auto">↻</button>
+                <button onClick={loadOrders} className="px-3 py-2 text-xs border border-gray-200 bg-white hover:border-gray-400">↻ Refresh</button>
               </div>
 
-              <p className="text-[11px] text-[#C8C4BE]">{filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''}</p>
+              {/* Order filters */}
+              <div className="flex flex-wrap gap-2 bg-white border border-gray-200 p-3">
+                <div className="relative flex-1 min-w-48">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                  <input type="text" placeholder="Order code or customer name…" value={orderSearch}
+                    onChange={e => setOrderSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 focus:outline-none focus:border-gray-500" />
+                </div>
+                <select value={orderStatus} onChange={e => setOrderStatus(e.target.value)}
+                  className="border border-gray-200 px-3 py-2 text-sm focus:outline-none bg-white">
+                  <option value="">All Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="paid">Paid</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
 
               {filteredOrders.length === 0 ? (
-                <div className="bg-white border border-[#E8E4DF] text-center py-20 text-[#C8C4BE]">No orders yet</div>
+                <div className="bg-white border border-gray-200 py-20 text-center text-gray-400">No orders found.</div>
               ) : (
                 <div className="space-y-3">
                   {filteredOrders.map(order => {
                     const pay = order.payments?.[0];
                     return (
-                      <div key={order.id} className="bg-white border border-[#E8E4DF] overflow-hidden">
+                      <div key={order.id} className="bg-white border border-gray-200 overflow-hidden">
                         {/* Order header */}
-                        <div className="flex items-center justify-between px-5 py-3 bg-[#FAFAF8] border-b border-[#F0EEE9]">
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-gray-50 border-b border-gray-100">
                           <div className="flex items-center gap-3 flex-wrap">
-                            <span className="font-mono text-sm font-semibold text-brand-black">{order.order_code}</span>
+                            <span className="font-mono text-sm font-semibold text-gray-900">{order.order_code}</span>
                             <Pill status={order.status} />
                             {pay && <Pill status={pay.status} />}
-                            <span className="text-[11px] text-[#C8C4BE]">{pay?.payment_method}</span>
+                            <span className="text-xs text-gray-400">{formatDate(order.created_at)}</span>
                           </div>
-                          <div className="text-right">
-                            <p className="font-serif text-base font-medium text-brand-black">{formatPrice(order.total_amount)}</p>
-                            <p className="text-[11px] text-[#C8C4BE]">{formatDate(order.created_at)}</p>
-                          </div>
-                        </div>
-
-                        {/* Customer + shipping */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 px-5 py-4 border-b border-[#F0EEE9]">
-                          <div>
-                            <p className="text-[10px] text-[#C8C4BE] uppercase tracking-widest mb-1">Customer</p>
-                            <p className="text-sm font-medium text-brand-black">{order.customer_name}</p>
-                            <p className="text-[11px] text-[#B8B4AE]">{order.contact_number}</p>
-                            {order.email && <p className="text-[11px] text-[#B8B4AE]">{order.email}</p>}
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-[#C8C4BE] uppercase tracking-widest mb-1">Address</p>
-                            <p className="text-[11px] text-brand-black leading-relaxed">{order.address_full}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-[#C8C4BE] uppercase tracking-widest mb-1">Shipping</p>
-                            <p className="text-[11px] text-brand-black font-medium">{formatPrice(order.shipping_fee || 0)}</p>
-                            <p className="text-[11px] text-[#B8B4AE]">{order.region || '—'}</p>
-                            <p className="text-[11px] text-[#B8B4AE]">{order.courier || '—'}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-[#C8C4BE] uppercase tracking-widest mb-1">Items</p>
-                            <div className="flex flex-wrap gap-1">
-                              {order.order_items?.map((item, i) => (
-                                <span key={i} className="text-[10px] bg-[#F0EEE9] px-1.5 py-0.5 font-mono">{item.sku} ×{item.quantity}</span>
-                              ))}
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className="font-serif text-lg font-medium text-gray-900">{formatPrice(order.total_amount)}</p>
+                              <p className="text-[11px] text-gray-400">{pay?.payment_method}</p>
                             </div>
                           </div>
                         </div>
 
-                        {/* Actions */}
-                        <div className="flex flex-wrap items-center gap-2 px-5 py-3">
-                          {pay?.payment_proof_url && (
-                            <a href={pay.payment_proof_url} target="_blank" rel="noopener noreferrer"
-                              className="text-[11px] text-brand-orange underline hover:opacity-80">View Payment Proof ↗</a>
-                          )}
-                          <div className="ml-auto flex flex-wrap gap-2">
-                            <select value={order.status}
-                              onChange={e => setOrderStatus(order.id, e.target.value)}
-                              className="border border-[#E2DED8] px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-brand-black">
+                        {/* Order body */}
+                        <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-3 gap-5 border-b border-gray-100">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Customer</p>
+                            <p className="text-sm font-medium text-gray-900">{order.customer_name}</p>
+                            <p className="text-xs text-gray-500">{order.contact_number}</p>
+                            {order.email && <p className="text-xs text-gray-400">{order.email}</p>}
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Deliver To</p>
+                            <p className="text-xs text-gray-700 leading-relaxed">{order.address_full}</p>
+                            {order.region && <p className="text-xs text-gray-400 mt-1">{order.region} · {order.courier}</p>}
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Payment</p>
+                            <p className="text-xs text-gray-700">Subtotal: {formatPrice(order.subtotal || order.total_amount)}</p>
+                            <p className="text-xs text-gray-700">Shipping: {formatPrice(order.shipping_fee || 0)}</p>
+                            {pay?.payment_proof_url && (
+                              <a href={pay.payment_proof_url} target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-[#E8571A] underline mt-1 block">View proof →</a>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Items + actions */}
+                        <div className="px-5 py-3 flex flex-wrap items-center gap-3">
+                          <div className="flex flex-wrap gap-1.5 flex-1">
+                            {order.order_items?.map((item,i) => (
+                              <span key={i} className="font-mono text-[11px] bg-gray-100 text-gray-600 px-2 py-1">
+                                {item.sku} ×{item.quantity}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="flex gap-2 flex-wrap">
+                            <select value={order.status} onChange={e => updateOrderStatus(order.id, e.target.value)}
+                              className="text-xs border border-gray-200 px-3 py-1.5 bg-white focus:outline-none cursor-pointer hover:border-gray-400">
                               <option value="pending">Pending</option>
                               <option value="paid">Paid</option>
                               <option value="shipped">Shipped</option>
@@ -1295,13 +1244,13 @@ export default function AdminPage() {
                             </select>
                             {pay?.status === 'pending' && pay?.payment_method !== 'COD' && (
                               <>
-                                <button onClick={() => verifyPay(order.id)}
-                                  className="text-xs px-4 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 transition-colors font-medium">
-                                  ✓ Verify Payment
+                                <button onClick={() => verifyPayment(order.id)}
+                                  className="text-xs px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
+                                  ✓ Verify
                                 </button>
-                                <button onClick={() => rejectPay(order.id)}
-                                  className="text-xs px-4 py-1.5 bg-red-600 text-white hover:bg-red-700 transition-colors font-medium">
-                                  ✕ Reject
+                                <button onClick={() => rejectPayment(order.id)}
+                                  className="text-xs px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 transition-colors">
+                                  ✗ Reject
                                 </button>
                               </>
                             )}
@@ -1315,71 +1264,70 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ══ QR CODES ══════════════════════════════════════ */}
+          {/* ══ QR CODES ════════════════════════════════════ */}
           {tab === 'qr' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <h1 className="font-serif text-2xl text-gray-900">QR Codes</h1>
 
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Search QR */}
-                <div className="bg-white border border-[#E8E4DF] p-6">
-                  <p className="text-[11px] font-semibold text-[#B8B4AE] uppercase tracking-widest mb-1">Search QR</p>
-                  <p className="text-xs text-[#C8C4BE] mb-5">Enter a SKU to generate its QR code</p>
+                <div className="bg-white border border-gray-200 p-6">
+                  <h3 className="font-medium text-sm mb-1">Generate Single QR</h3>
+                  <p className="text-xs text-gray-400 mb-4">Enter a SKU to generate and download its QR code</p>
                   <div className="flex gap-2 mb-5">
-                    <input type="text" placeholder="AST-TOP-001"
+                    <input type="text" placeholder="e.g. AST-TOP-001"
                       value={qrSku} onChange={e => setQrSku(e.target.value.toUpperCase())}
-                      onKeyDown={e => e.key === 'Enter' && searchQR()}
-                      className="input-field font-mono text-sm flex-1" />
-                    <button onClick={searchQR} className="btn-primary px-5 py-2 text-xs">Generate</button>
+                      onKeyDown={e => e.key==='Enter' && searchQR()}
+                      className="flex-1 border border-gray-200 px-3 py-2 text-sm font-mono focus:outline-none focus:border-gray-500" />
+                    <button onClick={searchQR} className="px-4 py-2 bg-gray-900 text-white text-xs font-medium hover:bg-gray-700">Generate</button>
                   </div>
-                  {qrProd && (
-                    <div className="text-center">
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`${APP_URL}/p/${qrProd.sku}`)}&bgcolor=FFFFFF&color=0A0A0A&margin=12`}
-                        alt={qrProd.sku} className="mx-auto mb-3 border border-[#E8E4DF]" style={{ width: 180, height: 180 }}
-                      />
-                      <p className="font-medium text-sm text-brand-black">{qrProd.name}</p>
-                      <p className="font-mono text-[11px] text-[#B8B4AE] mb-4">{qrProd.sku}</p>
+                  {qrProduct && (
+                    <div className="text-center border-t border-gray-100 pt-5">
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${APP_URL}/p/${qrProduct.sku}`)}&bgcolor=FFFFFF&color=000000&margin=10`}
+                        alt={qrProduct.sku} className="mx-auto mb-3 w-40 h-40" />
+                      <p className="font-medium text-sm">{qrProduct.name}</p>
+                      <p className="font-mono text-xs text-gray-400 mb-4">{qrProduct.sku}</p>
                       <div className="flex gap-2 justify-center">
-                        <a href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(`${APP_URL}/p/${qrProd.sku}`)}&bgcolor=FFFFFF&color=000000&margin=20`}
-                          download={`${qrProd.sku}.png`} target="_blank" rel="noopener noreferrer"
-                          className="btn-primary py-2 px-5 text-xs">⬇ Download PNG</a>
-                        <a href={`/p/${qrProd.sku}`} target="_blank" rel="noopener noreferrer"
-                          className="btn-outline py-2 px-5 text-xs">🔗 View Page</a>
+                        <a href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(`${APP_URL}/p/${qrProduct.sku}`)}&bgcolor=FFFFFF&color=000000&margin=20`}
+                          download={`${qrProduct.sku}.png`} target="_blank" rel="noopener noreferrer"
+                          className="px-4 py-2 bg-gray-900 text-white text-xs font-medium">⬇ Download PNG</a>
+                        <a href={`/p/${qrProduct.sku}`} target="_blank" rel="noopener noreferrer"
+                          className="px-4 py-2 border border-gray-200 text-xs hover:border-gray-500">🔗 View Page</a>
                       </div>
                     </div>
                   )}
                 </div>
 
                 {/* Bulk ZIP */}
-                <div className="bg-white border border-[#E8E4DF] p-6">
-                  <p className="text-[11px] font-semibold text-[#B8B4AE] uppercase tracking-widest mb-1">Bulk Download</p>
-                  <p className="text-xs text-[#C8C4BE] mb-5">All {products.length} QR codes as one ZIP · 600×600px · Print-ready</p>
-                  <div className="bg-[#FAFAF8] border border-[#F0EEE9] p-4 mb-5 font-mono text-[11px] text-[#C8C4BE] space-y-1">
-                    {products.slice(0, 5).map(p => <p key={p.sku}>{p.sku}.png</p>)}
-                    {products.length > 5 && <p>…{products.length - 5} more</p>}
+                <div className="bg-white border border-gray-200 p-6">
+                  <h3 className="font-medium text-sm mb-1">Download All QR Codes</h3>
+                  <p className="text-xs text-gray-400 mb-4">{products.length} QR codes · 600×600px · Print-ready · ZIP file</p>
+                  <div className="bg-gray-50 p-3 mb-5 font-mono text-xs text-gray-500 space-y-1 max-h-32 overflow-y-auto">
+                    {products.slice(0,8).map(p => <p key={p.sku}>{p.sku}.png</p>)}
+                    {products.length > 8 && <p className="text-gray-300">…{products.length-8} more</p>}
                   </div>
-                  <button onClick={downloadAllQR} disabled={genZip || products.length === 0}
-                    className="btn-primary w-full py-3 text-xs disabled:opacity-40">
-                    {genZip ? '⏳ Generating…' : `⬇ Download All ${products.length} QR Codes (ZIP)`}
+                  <button onClick={genAllQR} disabled={genZip || products.length===0}
+                    className="w-full px-4 py-3 bg-gray-900 text-white text-xs font-medium hover:bg-gray-700 disabled:opacity-40 transition-colors">
+                    {genZip ? '⏳ Generating…' : `⬇ Download All (ZIP)`}
                   </button>
                 </div>
               </div>
 
-              {/* All QR grid */}
+              {/* QR Grid */}
               <div>
-                <p className="text-[11px] font-semibold text-[#B8B4AE] uppercase tracking-widest mb-4">All QR Codes</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+                <h3 className="font-medium text-sm mb-3">All Products</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                   {products.map(p => {
                     const url = `${APP_URL}/p/${p.sku}`;
                     return (
-                      <div key={p.sku} className="bg-white border border-[#E8E4DF] p-4 text-center hover:border-brand-orange transition-colors">
-                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=0A0A0A&margin=6`}
-                          alt={p.sku} className="mx-auto mb-2 w-24 h-24" />
-                        <p className="font-mono text-[10px] text-[#C8C4BE] truncate">{p.sku}</p>
-                        <p className="text-[11px] text-brand-black truncate mb-2">{p.name}</p>
+                      <div key={p.sku} className="bg-white border border-gray-200 p-4 text-center hover:border-gray-400 transition-colors">
+                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=6`}
+                          alt={p.sku} className="mx-auto mb-2 w-20 h-20" />
+                        <p className="font-mono text-[10px] text-gray-400 truncate">{p.sku}</p>
+                        <p className="text-xs text-gray-700 truncate mb-2">{p.name}</p>
                         <a href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=20`}
                           download={`${p.sku}.png`} target="_blank" rel="noopener noreferrer"
-                          className="text-[11px] text-brand-orange hover:opacity-70">⬇ PNG</a>
+                          className="text-[11px] text-[#E8571A] underline">⬇ PNG</a>
                       </div>
                     );
                   })}
@@ -1388,8 +1336,8 @@ export default function AdminPage() {
             </div>
           )}
 
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
