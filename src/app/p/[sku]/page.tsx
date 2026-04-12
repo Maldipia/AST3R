@@ -19,13 +19,13 @@ export async function generateMetadata(
     .select('name, description, image_url')
     .eq('sku', props.params.sku)
     .single();
-  if (!data) return { title: 'Product Not Found — AST3R Fashion' };
+  if (!data) return { title: 'Product Not Found  -  AST3R Fashion' };
   return {
-    title: data.name + ' — AST3R Fashion',
+    title: data.name + '  -  AST3R Fashion',
     description: data.description ? data.description.slice(0, 155) : '',
     openGraph: {
       images: [{ url: data.image_url }],
-      title: data.name + ' — AST3R Fashion',
+      title: data.name + '  -  AST3R Fashion',
     },
   };
 }
