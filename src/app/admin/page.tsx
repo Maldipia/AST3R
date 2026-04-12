@@ -36,7 +36,8 @@ type Order = {
 };
 
 const CATS  = ['Tops','Bottoms','Dresses','Blazers','Jackets','Outerwear','Sets','Shawls','Accessories','Kids'];
-const SIZES = ['XS','S','M','L','XL','XXL','Free Size'];
+const SIZES = ['XS','S','M','L','XL','XXL','3XL','4XL','5XL','Free Size'];
+const KIDS_SIZES = ['1yr','2yr','3yr','4yr','5yr','6yr','7yr','8yr','9yr','10yr','11yr','12yr'];
 const APP   = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
 const PAGE  = 50;
 
@@ -98,6 +99,8 @@ function ImageCell({ p, onDone }: { p: Product; onDone: (id: string, url: string
 
 // ── Size Cell ───────────────────────────────────────────────────
 function SizeCell({ p, onSaved }: { p: Product; onSaved: () => void }) {
+  const isKids   = p.category === 'Kids';
+  const sizeList = isKids ? KIDS_SIZES : SIZES;
   const [open, setOpen] = useState(false);
   const [local, setLocal] = useState<Record<string, number>>(() => {
     const m: Record<string, number> = {};
@@ -154,7 +157,7 @@ function SizeCell({ p, onSaved }: { p: Product; onSaved: () => void }) {
             </div>
           ))}
           <div className="flex flex-wrap gap-1 pt-2 border-t border-gray-100">
-            {SIZES.filter(s => local[s] === undefined).map(s => (
+            {sizeList.filter(s => local[s] === undefined).map(s => (
               <button key={s} onClick={() => save(s, 0)}
                 className="text-[10px] px-1.5 py-0.5 border border-dashed border-gray-300 hover:border-orange-400 hover:text-orange-500 rounded-sm transition-colors">+{s}</button>
             ))}
@@ -340,14 +343,15 @@ function EditModal({ p, onClose, onSaved }: { p: Product; onClose: () => void; o
           {/* Sizes */}
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Sizes & Stock per Size</label>
+            {(() => { const isKidsModal = form.category === 'Kids'; const sizeListModal = isKidsModal ? KIDS_SIZES : SIZES; return (
             <div className="flex flex-wrap gap-1.5 mb-3">
-              {SIZES.map(sz => (
+              {sizeListModal.map(sz => (
                 <button key={sz} onClick={() => setSizes(prev => { const n = {...prev}; if (n[sz] !== undefined) delete n[sz]; else n[sz] = 0; return n; })}
                   className={`text-xs px-3 py-1.5 rounded-sm border transition-all font-medium ${sizes[sz] !== undefined ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-500 hover:border-gray-400'}`}>
                   {sz}
                 </button>
               ))}
-            </div>
+            </div>); })()}
             {Object.keys(sizes).length > 0 ? (
               <div className="border border-gray-200 rounded-sm divide-y divide-gray-100">
                 {Object.entries(sizes).map(([sz, qty]) => (
@@ -544,7 +548,7 @@ function QuickAdd({ onAdded }: { onAdded: () => void }) {
       <div className="flex items-center gap-3 mb-3">
         <span className="text-xs text-gray-400 whitespace-nowrap">Sizes:</span>
         <div className="flex flex-wrap gap-1">
-          {SIZES.map(s=>(
+          {(form.category === 'Kids' ? KIDS_SIZES : SIZES).map(s=>(
             <button key={s} onClick={()=>toggle(s)}
               className={`text-xs px-2 py-1 rounded-sm border transition-all ${form.sizes.includes(s)?'border-gray-900 bg-gray-900 text-white':'border-gray-200 hover:border-gray-400'}`}>{s}</button>
           ))}
