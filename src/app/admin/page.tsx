@@ -1422,16 +1422,13 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <div className="divide-y divide-gray-50">
-                  {payMethods.map(pm => {
-                    const pmRef = useRef<HTMLInputElement>(null);
-                    const ICONS: Record<string, string> = { gcash:'📱', maya:'💙', bdo:'🏦', bpi:'🏦', cod:'💵', cop:'🏪', later:'🕐' };
-                    return (
+                  {payMethods.map(pm => (
                       <div key={pm.id} className="p-5">
                         <div className="flex items-start gap-4">
                           {/* QR preview / upload */}
                           <div className="flex-shrink-0">
                             <div className="w-20 h-20 border-2 border-dashed border-gray-200 rounded-xl overflow-hidden relative cursor-pointer hover:border-orange-400 transition-colors group"
-                              onClick={() => !['cod','cop','later'].includes(pm.type) && pmRef.current?.click()}>
+                              onClick={() => !['cod','cop','later'].includes(pm.type) && (document.getElementById('pmfile-'+pm.id) as HTMLInputElement)?.click()}>
                               {pm.qr_url ? (
                                 <img src={pm.qr_url} alt="" className="w-full h-full object-contain" />
                               ) : (
@@ -1447,7 +1444,7 @@ export default function AdminPage() {
                               )}
                             </div>
                             {!['cod','cop','later'].includes(pm.type) && (
-                              <input ref={pmRef} type="file" accept="image/*" className="hidden"
+                              <input id={'pmfile-'+pm.id} type="file" accept="image/*" className="hidden"
                                 onChange={e => { const f = e.target.files?.[0]; if (f) uploadPayQR(pm, f); e.target.value = ''; }} />
                             )}
                           </div>
@@ -1487,18 +1484,17 @@ export default function AdminPage() {
                                 className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs mt-1 focus:outline-none focus:border-orange-400" />
                             </div>
                             {!['cod','cop','later'].includes(pm.type) && !pm.qr_url && (
-                              <button onClick={() => pmRef.current?.click()}
+                              <button onClick={() => (document.getElementById('pmfile-'+pm.id) as HTMLInputElement)?.click()}
                                 className="text-xs text-orange-500 underline">Upload {pm.label} QR Code</button>
                             )}
                             {pm.qr_url && (
-                              <button onClick={() => pmRef.current?.click()}
+                              <button onClick={() => (document.getElementById('pmfile-'+pm.id) as HTMLInputElement)?.click()}
                                 className="text-xs text-gray-400 underline">Change QR Code</button>
                             )}
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
+                  ))}
                 </div>
               </div>
 
