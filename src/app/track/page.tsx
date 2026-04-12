@@ -1,7 +1,7 @@
 // src/app/track/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams }     from 'next/navigation';
 import Link                    from 'next/link';
 import { supabase }            from '@/lib/supabase';
@@ -21,7 +21,7 @@ const STATUS_INDEX: Record<string, number> = {
   pending: 0, paid: 1, shipped: 2, delivered: 3, cancelled: -1,
 };
 
-export default function TrackPage() {
+function TrackPageInner() {
   const params    = useSearchParams();
   const [code,    setCode]    = useState(params.get('code') || '');
   const [order,   setOrder]   = useState<any>(null);
@@ -216,5 +216,17 @@ export default function TrackPage() {
         </div>
       </main>
     </>
+  );
+}
+
+export default function TrackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-brand-cream flex items-center justify-center">
+        <p className="text-brand-gray text-sm animate-pulse">Loading…</p>
+      </div>
+    }>
+      <TrackPageInner />
+    </Suspense>
   );
 }
