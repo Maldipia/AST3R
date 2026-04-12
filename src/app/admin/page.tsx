@@ -35,7 +35,7 @@ type Order = {
   order_items: { sku: string; quantity: number; price: number }[];
 };
 
-const CATS  = ['Tops','Bottoms','Dresses','Outerwear','Accessories','Sets','Kids'];
+const CATS  = ['Tops','Bottoms','Dresses','Blazers','Jackets','Outerwear','Sets','Shawls','Accessories','Kids'];
 const SIZES = ['XS','S','M','L','XL','XXL','Free Size'];
 const APP   = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
 const PAGE  = 50;
