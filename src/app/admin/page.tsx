@@ -592,6 +592,106 @@ function PromoForm({ onSaved }: { onSaved: () => void }) {
   );
 }
 
+
+// ── Payment Method Row ─────────────────────────────────────────
+const PM_ICONS: Record<string, string> = { gcash:'📱', maya:'💙', bdo:'🏦', bpi:'🏦', cod:'💵', cop:'🏪', later:'🕐' };
+const NO_QR = ['cod','cop','later'];
+
+function PaymentMethodRow({
+  pm,
+  uploading,
+  onUpload,
+  onUpdate,
+}: {
+  pm: PaymentMethod;
+  uploading: boolean;
+  onUpload: (file: File) => void;
+  onUpdate: (updates: Partial<PaymentMethod>) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const canHaveQR = !NO_QR.includes(pm.type);
+
+  return (
+    <div className="p-5 border-b border-gray-50 last:border-0">
+      <div className="flex items-start gap-4">
+        {/* QR Box */}
+        <div
+          className={`w-20 h-20 border-2 border-dashed rounded-xl overflow-hidden relative flex-shrink-0 ${canHaveQR ? 'cursor-pointer hover:border-orange-400 group' : ''} border-gray-200 transition-colors`}
+          onClick={() => canHaveQR && fileRef.current?.click()}>
+          {pm.qr_url ? (
+            <img src={pm.qr_url} alt="" className="w-full h-full object-contain" />
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+              <span className="text-2xl">{PM_ICONS[pm.type] || '💳'}</span>
+              {canHaveQR && <p className="text-[9px] text-gray-400 text-center group-hover:text-orange-400 px-1">Upload QR</p>}
+            </div>
+          )}
+          {uploading && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+        </div>
+
+        {/* Details */}
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-gray-900 text-sm">{pm.label}</span>
+            <button
+              onClick={() => onUpdate({ active: !pm.active })}
+              className={`text-xs px-2 py-0.5 rounded-sm transition-colors ${pm.active ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
+              {pm.active ? 'Active' : 'Hidden'}
+            </button>
+          </div>
+
+          {canHaveQR && (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Account Name</label>
+                <input
+                  defaultValue={pm.account_name || ''}
+                  onBlur={e => { if (e.target.value !== pm.account_name) onUpdate({ account_name: e.target.value }); }}
+                  placeholder="AST3R Fashion"
+                  className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs focus:outline-none focus:border-orange-400" />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Number / Account No.</label>
+                <input
+                  defaultValue={pm.account_number || ''}
+                  onBlur={e => { if (e.target.value !== pm.account_number) onUpdate({ account_number: e.target.value }); }}
+                  placeholder="09XX XXX XXXX"
+                  className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-orange-400" />
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Customer Instructions</label>
+            <input
+              defaultValue={pm.instructions || ''}
+              onBlur={e => { if (e.target.value !== pm.instructions) onUpdate({ instructions: e.target.value }); }}
+              placeholder="Payment instructions..."
+              className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs focus:outline-none focus:border-orange-400" />
+          </div>
+
+          {canHaveQR && (
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="text-xs text-orange-500 underline hover:opacity-70">
+              {pm.qr_url ? 'Change QR Code' : 'Upload QR Code'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {canHaveQR && (
+        <input ref={fileRef} type="file" accept="image/*" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) onUpload(f); e.target.value = ''; }} />
+      )}
+    </div>
+  );
+}
+
 // ── Main Admin ─────────────────────────────────────────────────
 export default function AdminPage() {
   const router = useRouter();
@@ -638,12 +738,7 @@ export default function AdminPage() {
     });
   }, []);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    await Promise.all([loadProducts(), loadOrders(), loadPromos(), loadReviews(), loadAnalytics(), loadPayMethods()]);
-    setLoading(false);
-  }, []);
-
+  // All load functions defined before useCallback that references them
   const loadProducts = async () => {
     const { data } = await supabase.from('products').select('*, inventory(quantity), size_inventory(size,quantity)').order('created_at', { ascending: false });
     if (data) {
@@ -686,6 +781,12 @@ export default function AdminPage() {
     const { data } = await supabase.from('payment_qr_codes').select('*').order('sort_order');
     if (data) setPayMethods(data as PaymentMethod[]);
   };
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([loadProducts(), loadOrders(), loadPromos(), loadReviews(), loadAnalytics(), loadPayMethods()]);
+    setLoading(false);
+  }, []);
 
   const uploadPayQR = async (pm: PaymentMethod, file: File) => {
     setPmUploading(pm.id);
@@ -1423,77 +1524,13 @@ export default function AdminPage() {
                 </div>
                 <div className="divide-y divide-gray-50">
                   {payMethods.map(pm => (
-                      <div key={pm.id} className="p-5">
-                        <div className="flex items-start gap-4">
-                          {/* QR preview / upload */}
-                          <div className="flex-shrink-0">
-                            <div className="w-20 h-20 border-2 border-dashed border-gray-200 rounded-xl overflow-hidden relative cursor-pointer hover:border-orange-400 transition-colors group"
-                              onClick={() => !['cod','cop','later'].includes(pm.type) && (document.getElementById('pmfile-'+pm.id) as HTMLInputElement)?.click()}>
-                              {pm.qr_url ? (
-                                <img src={pm.qr_url} alt="" className="w-full h-full object-contain" />
-                              ) : (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-                                  <span className="text-2xl">{ICONS[pm.type] || '💳'}</span>
-                                  {!['cod','cop','later'].includes(pm.type) && <p className="text-[9px] text-gray-400 text-center group-hover:text-orange-400">Upload QR</p>}
-                                </div>
-                              )}
-                              {pmUploading === pm.id && (
-                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                </div>
-                              )}
-                            </div>
-                            {!['cod','cop','later'].includes(pm.type) && (
-                              <input id={'pmfile-'+pm.id} type="file" accept="image/*" className="hidden"
-                                onChange={e => { const f = e.target.files?.[0]; if (f) uploadPayQR(pm, f); e.target.value = ''; }} />
-                            )}
-                          </div>
-
-                          {/* Details */}
-                          <div className="flex-1 min-w-0 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-gray-900 text-sm">{pm.label}</span>
-                              <button onClick={() => updatePayMethod(pm, { active: !pm.active })}
-                                className={`text-xs px-2 py-0.5 rounded-sm ${pm.active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
-                                {pm.active ? 'Active' : 'Hidden'}
-                              </button>
-                            </div>
-                            {!['cod','cop','later'].includes(pm.type) && (
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <label className="text-[10px] text-gray-400 uppercase tracking-wider">Account Name</label>
-                                  <input defaultValue={pm.account_name || ''}
-                                    onBlur={e => { if (e.target.value !== pm.account_name) updatePayMethod(pm, { account_name: e.target.value }); }}
-                                    placeholder="AST3R Fashion"
-                                    className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs mt-1 focus:outline-none focus:border-orange-400" />
-                                </div>
-                                <div>
-                                  <label className="text-[10px] text-gray-400 uppercase tracking-wider">Number / Account No.</label>
-                                  <input defaultValue={pm.account_number || ''}
-                                    onBlur={e => { if (e.target.value !== pm.account_number) updatePayMethod(pm, { account_number: e.target.value }); }}
-                                    placeholder="09XX XXX XXXX"
-                                    className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs mt-1 font-mono focus:outline-none focus:border-orange-400" />
-                                </div>
-                              </div>
-                            )}
-                            <div>
-                              <label className="text-[10px] text-gray-400 uppercase tracking-wider">Instructions for customer</label>
-                              <input defaultValue={pm.instructions || ''}
-                                onBlur={e => { if (e.target.value !== pm.instructions) updatePayMethod(pm, { instructions: e.target.value }); }}
-                                placeholder="Payment instructions..."
-                                className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs mt-1 focus:outline-none focus:border-orange-400" />
-                            </div>
-                            {!['cod','cop','later'].includes(pm.type) && !pm.qr_url && (
-                              <button onClick={() => (document.getElementById('pmfile-'+pm.id) as HTMLInputElement)?.click()}
-                                className="text-xs text-orange-500 underline">Upload {pm.label} QR Code</button>
-                            )}
-                            {pm.qr_url && (
-                              <button onClick={() => (document.getElementById('pmfile-'+pm.id) as HTMLInputElement)?.click()}
-                                className="text-xs text-gray-400 underline">Change QR Code</button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                    <PaymentMethodRow
+                      key={pm.id}
+                      pm={pm}
+                      uploading={pmUploading === pm.id}
+                      onUpload={file => uploadPayQR(pm, file)}
+                      onUpdate={updates => updatePayMethod(pm, updates)}
+                    />
                   ))}
                 </div>
               </div>
