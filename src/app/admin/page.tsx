@@ -844,6 +844,7 @@ export default function AdminPage() {
   const [qrSku,      setQrSku]      = useState('');
   const [qrProd,     setQrProd]     = useState<Product | null>(null);
   const [genZip,     setGenZip]     = useState(false);
+  const [activeCategory, setActiveCategory] = useState('All');
   const [editPrices, setEditPrices] = useState<Record<string,string>>({});
   const [editStocks, setEditStocks] = useState<Record<string,string>>({});
   const [stats, setStats] = useState({ orders:0, revenue:0, pending:0, products:0, lowStock:0 });
@@ -944,11 +945,15 @@ export default function AdminPage() {
   // Filtered & paginated products
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return products.filter(p => !q || p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
-  }, [products, search]);
+    return products.filter(p => {
+      const matchSearch = !q || p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q);
+      const matchCat    = activeCategory === 'All' || p.category === activeCategory;
+      return matchSearch && matchCat;
+    });
+  }, [products, search, activeCategory]);
   const totalPages = Math.ceil(filtered.length / PAGE);
   const paginated  = filtered.slice(page * PAGE, (page+1) * PAGE);
-  useEffect(() => setPage(0), [search]);
+  useEffect(() => setPage(0), [search, activeCategory]);
 
   // Mutations
   const savePrice = async (p: Product) => {
@@ -1232,23 +1237,51 @@ export default function AdminPage() {
 
           {/* ══ PRODUCTS ══════════════════════════════════════════ */}
           {tab === 'products' && (
-            <div className="space-y-4 max-w-screen-xl">
-              {/* Toolbar */}
-              <div className="flex flex-wrap gap-3 items-center">
-                <div className="relative flex-1 min-w-48 max-w-sm">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-                  <input type="text" placeholder="Search SKU, name, category..."
-                    value={search} onChange={e => setSearch(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg pl-9 pr-8 py-2.5 text-sm focus:outline-none focus:border-gray-400 bg-white shadow-sm" />
-                  {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">x</button>}
+            <div className="space-y-0 max-w-screen-xl">
+              {/* Sticky toolbar */}
+              <div className="sticky top-[57px] z-20 bg-gray-50 pb-3 pt-1 space-y-3">
+                {/* Row 1: Search + buttons */}
+                <div className="flex flex-wrap gap-3 items-center">
+                  <div className="relative flex-1 min-w-48 max-w-sm">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                    <input type="text" placeholder="Search SKU, name..."
+                      value={search} onChange={e => setSearch(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg pl-9 pr-8 py-2.5 text-sm focus:outline-none focus:border-gray-400 bg-white shadow-sm" />
+                    {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">✕</button>}
+                  </div>
+                  <div className="flex gap-2 ml-auto">
+                    <button onClick={loadProducts} className="border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-white hover:bg-gray-50 transition-colors shadow-sm">↻</button>
+                    <button onClick={() => setShowCSV(true)} className="border border-gray-800 rounded-lg px-4 py-2.5 text-sm bg-white hover:bg-gray-900 hover:text-white transition-colors shadow-sm">CSV</button>
+                  </div>
                 </div>
-                <div className="flex gap-2 ml-auto">
-                  <button onClick={loadProducts} className="border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-white hover:bg-gray-50 transition-colors shadow-sm">Refresh</button>
-                  <button onClick={() => setShowCSV(true)} className="border border-gray-800 rounded-lg px-4 py-2.5 text-sm bg-white hover:bg-gray-900 hover:text-white transition-colors shadow-sm">CSV Import</button>
+                {/* Row 2: Category tabs */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                  {['All', ...CATS].map(cat => {
+                    const count = cat === 'All' ? products.length : products.filter(p => p.category === cat).length;
+                    const isActive = (cat === 'All' && !search && activeCategory === 'All') || activeCategory === cat;
+                    return (
+                      <button key={cat} onClick={() => setActiveCategory(cat)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex-shrink-0 ${
+                          isActive
+                            ? 'bg-gray-900 text-white shadow-sm'
+                            : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700'
+                        }`}>
+                        {cat}
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'}`}>{count}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+                {(search || activeCategory !== 'All') && (
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-gray-400">{filtered.length} product{filtered.length!==1?'s':''}</p>
+                    {(search || activeCategory !== 'All') && (
+                      <button onClick={() => { setSearch(''); setActiveCategory('All'); }} className="text-xs text-orange-500 underline">Clear filters</button>
+                    )}
+                  </div>
+                )}
               </div>
-
-              {search && <p className="text-xs text-gray-400">{filtered.length} result{filtered.length!==1?'s':''} for "{search}"</p>}
+              <div className="h-2" />
 
               {/* Table */}
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
