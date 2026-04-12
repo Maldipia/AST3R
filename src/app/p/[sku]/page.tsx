@@ -49,14 +49,15 @@ export default async function ProductPage({
 
   if (error || !product) notFound();
 
-  const prod = product as Record<string, any>;
+  // Safe cast after notFound guard
+  const prod = product!;
 
   // Fetch all related data in parallel
   const [priceRes, sizeRes, relatedRes, reviewsRes] = await Promise.all([
     supabase.from('products').select('compare_price').eq('sku', sku).single(),
     supabase.from('size_inventory').select('size, quantity').eq('sku', sku).order('size'),
     supabase.from('products').select('sku, name, price, compare_price, image_url, category')
-      .eq('status', 'active').eq('category', prod.category).neq('sku', sku).limit(4),
+      .eq('status', 'active').eq('category', (prod as any).category).neq('sku', sku).limit(4),
     supabase.from('reviews').select('customer_name, rating, comment, created_at')
       .eq('sku', sku).eq('verified', true).order('created_at', { ascending: false }),
   ]);
@@ -74,7 +75,7 @@ export default async function ProductPage({
   supabase.rpc('track_qr_scan', { p_sku: sku }).then(() => {});
 
   const hasSizes     = sizeInventory.length > 0;
-  const totalSizeQty = hasSizes ? sizeInventory.reduce((sum: number, s: any) => sum + s.quantity, 0) : (prod.quantity ?? 0);
+  const totalSizeQty = hasSizes ? sizeInventory.reduce((sum: number, s: any) => sum + s.quantity, 0) : ((prod as any).quantity ?? 0);
   const { label: stockLabel, color: stockColor } = getStockLabel(totalSizeQty);
   const inStock = totalSizeQty > 0;
 
@@ -88,10 +89,10 @@ export default async function ProductPage({
 
             {/* ── LEFT: Product Image ──────────────────────── */}
             <div className="relative bg-brand-cream overflow-hidden" style={{ minHeight: '60vw', maxHeight: '90vh' }}>
-              {prod.image_url ? (
+              {(prod as any).image_url ? (
                 <Image
-                  src={prod.image_url}
-                  alt={prod.name}
+                  src={(prod as any).image_url}
+                  alt={(prod as any).name}
                   fill
                   className="object-cover"
                   priority
@@ -106,14 +107,14 @@ export default async function ProductPage({
               {/* Category tag */}
               <div className="absolute top-6 left-6">
                 <span className="bg-brand-white/90 backdrop-blur-sm px-3 py-1 text-xs tracking-widest uppercase font-medium text-brand-gray">
-                  {prod.category}
+                  {(prod as any).category}
                 </span>
               </div>
 
               {/* SKU tag */}
               <div className="absolute bottom-6 right-6">
                 <span className="bg-brand-black/80 backdrop-blur-sm px-3 py-1 text-xs tracking-widest text-brand-white font-mono">
-                  {prod.sku}
+                  {(prod as any).sku}
                 </span>
               </div>
             </div>
@@ -125,41 +126,41 @@ export default async function ProductPage({
               <div className="flex items-center gap-2 mb-8">
                 <span className="accent-line" />
                 <span className="text-xs tracking-widest uppercase text-brand-gray font-medium">
-                  {prod.category}
+                  {(prod as any).category}
                 </span>
               </div>
 
               {/* Product Name */}
               <h1 className="display-lg text-brand-black mb-6 leading-tight">
-                {prod.name}
+                {(prod as any).name}
               </h1>
 
               {/* Price */}
               <div className="mb-6">
                 <div className="flex items-baseline gap-3 flex-wrap">
-                  {comparePrice && comparePrice < prod.price ? (
+                  {comparePrice && comparePrice < (prod as any).price ? (
                     <>
                       {/* Sale price — big and prominent */}
                       <span className="font-serif text-3xl font-medium text-red-600">
-                        {formatPrice(comparePrice, prod.currency)}
+                        {formatPrice(comparePrice, (prod as any).currency)}
                       </span>
                       {/* Original price — crossed out */}
                       <span className="font-serif text-xl text-brand-gray line-through">
-                        {formatPrice(prod.price, prod.currency)}
+                        {formatPrice((prod as any).price, (prod as any).currency)}
                       </span>
                       <span className="text-xs font-bold text-white bg-red-500 px-2 py-1 tracking-wide">
-                        {Math.round((1 - comparePrice / prod.price) * 100)}% OFF
+                        {Math.round((1 - comparePrice / (prod as any).price) * 100)}% OFF
                       </span>
                     </>
                   ) : (
                     <span className="font-serif text-3xl font-medium text-brand-black">
-                      {formatPrice(prod.price, prod.currency)}
+                      {formatPrice((prod as any).price, (prod as any).currency)}
                     </span>
                   )}
                 </div>
-                {comparePrice && comparePrice < prod.price && (
+                {comparePrice && comparePrice < (prod as any).price && (
                   <p className="text-xs text-green-600 mt-1 font-medium">
-                    You save {formatPrice(prod.price - comparePrice)}
+                    You save {formatPrice((prod as any).price - comparePrice)}
                   </p>
                 )}
               </div>
@@ -201,16 +202,16 @@ export default async function ProductPage({
 
               {/* Description */}
               <p className="text-brand-gray text-sm leading-relaxed mb-10 max-w-md">
-                {prod.description}
+                {(prod as any).description}
               </p>
 
               {/* CTA */}
               <OrderButton
-                sku={prod.sku}
-                name={prod.name}
-                price={prod.price}
+                sku={(prod as any).sku}
+                name={(prod as any).name}
+                price={(prod as any).price}
                 salePrice={comparePrice}
-                imageUrl={prod.image_url}
+                imageUrl={(prod as any).image_url}
                 inStock={inStock}
               />
 
@@ -229,13 +230,13 @@ export default async function ProductPage({
               </div>
 
               {/* QR Download (admin use) */}
-              <QRDownload sku={prod.sku} productName={prod.name} />
+              <QRDownload sku={(prod as any).sku} productName={(prod as any).name} />
 
               {/* Share buttons */}
               <div className="mt-8 pt-8 border-t border-brand-light">
                 <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-3">Share</p>
                 <div className="flex gap-2 flex-wrap">
-                  <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_URL + '/p/' + prod.sku)}`}
+                  <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_URL + '/p/' + (prod as any).sku)}`}
                     target="_blank" rel="noopener noreferrer"
                     className="flex items-center gap-1.5 text-xs border border-brand-light px-3 py-2 text-brand-gray hover:border-brand-black transition-all">
                     📘 Facebook
@@ -244,7 +245,7 @@ export default async function ProductPage({
                     className="flex items-center gap-1.5 text-xs border border-brand-light px-3 py-2 text-brand-gray hover:border-brand-black transition-all">
                     📷 @ast3r.ph
                   </a>
-                  <ShareButton url={`${APP_URL}/p/${prod.sku}`} />
+                  <ShareButton url={`${APP_URL}/p/${(prod as any).sku}`} />
                 </div>
               </div>
 
@@ -319,7 +320,7 @@ export default async function ProductPage({
             )}
 
             {/* Leave a review form */}
-            <ReviewForm sku={prod.sku} />
+            <ReviewForm sku={(prod as any).sku} />
           </div>
         </div>
 
