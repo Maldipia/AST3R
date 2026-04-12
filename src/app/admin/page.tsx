@@ -593,101 +593,234 @@ function PromoForm({ onSaved }: { onSaved: () => void }) {
 }
 
 
-// ── Payment Method Row ─────────────────────────────────────────
-const PM_ICONS: Record<string, string> = { gcash:'📱', maya:'💙', bdo:'🏦', bpi:'🏦', cod:'💵', cop:'🏪', later:'🕐' };
-const NO_QR = ['cod','cop','later'];
 
-function PaymentMethodRow({
-  pm,
-  uploading,
-  onUpload,
-  onUpdate,
+// ── Payment Manager (Luntian-style layout) ────────────────────
+const PM_ICONS: Record<string, string> = { gcash:'💚', maya:'💜', bdo:'🏦', bpi:'🏦', cod:'💵', cop:'🏪', later:'🕐' };
+const NO_QR_TYPES = ['cod','cop','later'];
+
+function PaymentManager({
+  methods, uploading, onUpload, onUpdate, onReload,
 }: {
-  pm: PaymentMethod;
-  uploading: boolean;
-  onUpload: (file: File) => void;
-  onUpdate: (updates: Partial<PaymentMethod>) => void;
+  methods: PaymentMethod[];
+  uploading: string | null;
+  onUpload: (pm: PaymentMethod, file: File) => void;
+  onUpdate: (pm: PaymentMethod, updates: Partial<PaymentMethod>) => void;
+  onReload: () => void;
 }) {
+  const [selected, setSelected] = useState<PaymentMethod | null>(null);
+  const [localForm, setLocalForm] = useState<Partial<PaymentMethod>>({});
+  const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const canHaveQR = !NO_QR.includes(pm.type);
+
+  // Sync form when selection changes
+  useEffect(() => {
+    if (selected) setLocalForm({
+      label:          selected.label,
+      account_name:   selected.account_name || '',
+      account_number: selected.account_number || '',
+      instructions:   selected.instructions || '',
+      active:         selected.active,
+    });
+  }, [selected?.id]);
+
+  const canHaveQR = selected && !NO_QR_TYPES.includes(selected.type);
+  const hasQR     = selected?.qr_url;
+
+  const save = async () => {
+    if (!selected) return;
+    setSaving(true);
+    await onUpdate(selected, localForm);
+    setSaving(false);
+    toast.success('Saved!');
+    onReload();
+  };
+
+  // Keep selected in sync with methods list after reload
+  useEffect(() => {
+    if (selected) {
+      const refreshed = methods.find(m => m.id === selected.id);
+      if (refreshed) setSelected(refreshed);
+    }
+  }, [methods]);
 
   return (
-    <div className="p-5 border-b border-gray-50 last:border-0">
-      <div className="flex items-start gap-4">
-        {/* QR Box */}
-        <div
-          className={`w-20 h-20 border-2 border-dashed rounded-xl overflow-hidden relative flex-shrink-0 ${canHaveQR ? 'cursor-pointer hover:border-orange-400 group' : ''} border-gray-200 transition-colors`}
-          onClick={() => canHaveQR && fileRef.current?.click()}>
-          {pm.qr_url ? (
-            <img src={pm.qr_url} alt="" className="w-full h-full object-contain" />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-              <span className="text-2xl">{PM_ICONS[pm.type] || '💳'}</span>
-              {canHaveQR && <p className="text-[9px] text-gray-400 text-center group-hover:text-orange-400 px-1">Upload QR</p>}
-            </div>
-          )}
-          {uploading && (
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
-        </div>
-
-        {/* Details */}
-        <div className="flex-1 min-w-0 space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-900 text-sm">{pm.label}</span>
-            <button
-              onClick={() => onUpdate({ active: !pm.active })}
-              className={`text-xs px-2 py-0.5 rounded-sm transition-colors ${pm.active ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
-              {pm.active ? 'Active' : 'Hidden'}
-            </button>
-          </div>
-
-          {canHaveQR && (
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Account Name</label>
-                <input
-                  defaultValue={pm.account_name || ''}
-                  onBlur={e => { if (e.target.value !== pm.account_name) onUpdate({ account_name: e.target.value }); }}
-                  placeholder="AST3R Fashion"
-                  className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs focus:outline-none focus:border-orange-400" />
-              </div>
-              <div>
-                <label className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Number / Account No.</label>
-                <input
-                  defaultValue={pm.account_number || ''}
-                  onBlur={e => { if (e.target.value !== pm.account_number) onUpdate({ account_number: e.target.value }); }}
-                  placeholder="09XX XXX XXXX"
-                  className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-orange-400" />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Customer Instructions</label>
-            <input
-              defaultValue={pm.instructions || ''}
-              onBlur={e => { if (e.target.value !== pm.instructions) onUpdate({ instructions: e.target.value }); }}
-              placeholder="Payment instructions..."
-              className="w-full border border-gray-200 rounded-sm px-2 py-1.5 text-xs focus:outline-none focus:border-orange-400" />
-          </div>
-
-          {canHaveQR && (
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="text-xs text-orange-500 underline hover:opacity-70">
-              {pm.qr_url ? 'Change QR Code' : 'Upload QR Code'}
-            </button>
-          )}
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-gray-900">Payment Methods</h3>
+          <p className="text-xs text-gray-400 mt-0.5">QR codes and payment details shown to customers at checkout</p>
         </div>
       </div>
 
-      {canHaveQR && (
-        <input ref={fileRef} type="file" accept="image/*" className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) onUpload(f); e.target.value = ''; }} />
-      )}
+      <div className="flex min-h-[500px]">
+        {/* Left: method list */}
+        <div className="w-60 border-r border-gray-100 flex-shrink-0">
+          {methods.map(m => (
+            <button key={m.id} onClick={() => setSelected(m)}
+              className={`w-full flex items-start gap-3 px-4 py-4 border-b border-gray-50 text-left transition-all hover:bg-gray-50 ${selected?.id === m.id ? 'bg-orange-50 border-l-2 border-l-orange-500' : ''}`}>
+              <span className="text-xl flex-shrink-0 mt-0.5">{PM_ICONS[m.type] || '💳'}</span>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-semibold ${selected?.id === m.id ? 'text-orange-600' : 'text-gray-900'}`}>{m.label}</p>
+                {m.account_number && <p className="text-xs text-gray-400 truncate mt-0.5">{m.account_number}</p>}
+                {m.qr_url && <p className="text-xs text-green-500 mt-0.5 font-medium">QR uploaded</p>}
+                {!m.qr_url && !NO_QR_TYPES.includes(m.type) && <p className="text-xs text-orange-400 mt-0.5">No QR yet</p>}
+              </div>
+              <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${m.active ? 'bg-green-400' : 'bg-gray-300'}`} />
+            </button>
+          ))}
+        </div>
+
+        {/* Right: edit panel */}
+        {selected ? (
+          <div className="flex-1 flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{PM_ICONS[selected.type] || '💳'}</span>
+                <div>
+                  <p className="font-semibold text-gray-900">{selected.label}</p>
+                  <p className="text-xs text-gray-400">Payment method settings</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-xs text-gray-500">
+                  Show at checkout
+                  <button onClick={() => setLocalForm(f => ({ ...f, active: !f.active }))}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${localForm.active ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${localForm.active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </label>
+                <label className="flex items-center gap-2 text-xs text-gray-500">
+                  Active
+                  <button onClick={() => setLocalForm(f => ({ ...f, active: !f.active }))}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${localForm.active ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${localForm.active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </label>
+                <button onClick={save} disabled={saving}
+                  className="bg-gray-900 text-white px-5 py-2 text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50">
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left: QR code */}
+                {canHaveQR && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">QR Code</p>
+                    <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center relative">
+                      {hasQR ? (
+                        <div>
+                          <img src={selected.qr_url!} alt="QR" className="mx-auto w-44 h-44 object-contain rounded-lg" />
+                          {uploading === selected.id && (
+                            <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl">
+                              <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="h-44 flex flex-col items-center justify-center text-gray-300">
+                          <span className="text-5xl mb-3">{PM_ICONS[selected.type]}</span>
+                          <p className="text-xs text-gray-400">No QR uploaded yet</p>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => fileRef.current?.click()}
+                      disabled={uploading === selected.id}
+                      className="mt-3 w-full border-2 border-dashed border-green-300 text-green-600 py-3 text-sm font-medium rounded-xl hover:bg-green-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                      <span>⬆️</span>
+                      {hasQR ? 'Replace QR Image' : 'Upload QR Image'}
+                    </button>
+                    <p className="text-center text-xs text-gray-400 mt-1">JPG, PNG · Max 5MB</p>
+
+                    {/* Paste URL option */}
+                    <div className="mt-3">
+                      <p className="text-xs text-gray-400 mb-1.5">Or paste image URL</p>
+                      <div className="flex gap-2">
+                        <input placeholder="https://..." id="qr-url-paste"
+                          className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-gray-400" />
+                        <button onClick={async () => {
+                          const url = (document.getElementById('qr-url-paste') as HTMLInputElement).value.trim();
+                          if (!url) return;
+                          await onUpdate(selected, { qr_url: url });
+                          toast.success('QR URL saved!');
+                          onReload();
+                        }} className="bg-gray-800 text-white text-xs px-3 py-2 rounded-lg hover:bg-gray-600 transition-colors">Save</button>
+                      </div>
+                    </div>
+
+                    <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) { onUpload(selected, f); } e.target.value = ''; }} />
+                  </div>
+                )}
+
+                {/* Right: Account details */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Account Details</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Display Label</label>
+                      <input value={localForm.label || ''} onChange={e => setLocalForm(f => ({ ...f, label: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gray-400" />
+                    </div>
+                    {!NO_QR_TYPES.includes(selected.type) && (
+                      <>
+                        <div>
+                          <label className="text-xs text-gray-500 block mb-1">Account Name</label>
+                          <input value={localForm.account_name || ''} onChange={e => setLocalForm(f => ({ ...f, account_name: e.target.value }))}
+                            placeholder="AST3R Fashion"
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gray-400" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 block mb-1">Account Number / Mobile Number</label>
+                          <input value={localForm.account_number || ''} onChange={e => setLocalForm(f => ({ ...f, account_number: e.target.value }))}
+                            placeholder="09XX XXX XXXX"
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-gray-400" />
+                        </div>
+                      </>
+                    )}
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Payment Instructions</label>
+                      <textarea value={localForm.instructions || ''} onChange={e => setLocalForm(f => ({ ...f, instructions: e.target.value }))}
+                        rows={3} placeholder="Instructions shown to customers..."
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-gray-400" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Customer preview */}
+              <div className="mt-6 border border-blue-100 bg-blue-50 rounded-xl p-4">
+                <p className="text-xs font-semibold text-blue-600 mb-3">👁️ Customer Preview — How this appears at checkout</p>
+                <div className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm">
+                  {selected.qr_url ? (
+                    <img src={selected.qr_url} alt="QR" className="w-16 h-16 object-contain rounded-lg border border-gray-100" />
+                  ) : (
+                    <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center text-2xl">{PM_ICONS[selected.type]}</div>
+                  )}
+                  <div>
+                    <p className="font-semibold text-gray-900">{localForm.label || selected.label}</p>
+                    {localForm.account_name && <p className="text-sm text-gray-500">{localForm.account_name}</p>}
+                    {localForm.account_number && <p className="text-sm font-bold text-orange-500">{localForm.account_number}</p>}
+                    {localForm.instructions && <p className="text-xs text-gray-400 mt-0.5">{localForm.instructions}</p>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-center p-12">
+            <div>
+              <p className="text-4xl mb-4">👈</p>
+              <p className="text-gray-500 font-medium">Select a payment method to edit</p>
+              <p className="text-xs text-gray-400 mt-1">Upload QR codes, update account details, toggle visibility</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1515,25 +1648,13 @@ export default function AdminPage() {
             <div className="max-w-3xl space-y-6">
 
               {/* Payment Methods & QR Codes */}
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Payment Methods & QR Codes</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Upload your GCash/bank QR codes - they show on the checkout page</p>
-                  </div>
-                </div>
-                <div className="divide-y divide-gray-50">
-                  {payMethods.map(pm => (
-                    <PaymentMethodRow
-                      key={pm.id}
-                      pm={pm}
-                      uploading={pmUploading === pm.id}
-                      onUpload={file => uploadPayQR(pm, file)}
-                      onUpdate={updates => updatePayMethod(pm, updates)}
-                    />
-                  ))}
-                </div>
-              </div>
+              <PaymentManager
+                methods={payMethods}
+                uploading={pmUploading}
+                onUpload={(pm, file) => uploadPayQR(pm, file)}
+                onUpdate={(pm, updates) => updatePayMethod(pm, updates)}
+                onReload={loadPayMethods}
+              />
 
               {/* Store Info */}
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
