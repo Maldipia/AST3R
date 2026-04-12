@@ -9,7 +9,7 @@ import Header          from '@/components/Header';
 import QRDownload      from './QRDownload';
 import ReviewForm      from './ReviewForm';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.ast3r.store';
 
 export async function generateMetadata(
   { params }: { params: { sku: string } }
@@ -68,7 +68,7 @@ export default async function ProductPage({ params }: { params: { sku: string } 
   const { label: stockLabel, color: stockColor } = getStockLabel(totalSizeQty);
   const inStock = totalSizeQty > 0;
 
-  const productUrl = `${APP_URL}/p/${rawProduct.sku}`;
+  const productUrl = APP_URL + '/p/' + rawProduct.sku;
 
   return (
     <>
@@ -189,7 +189,7 @@ export default async function ProductPage({ params }: { params: { sku: string } 
               <div className="mt-8 pt-8 border-t border-brand-light">
                 <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-3">Share</p>
                 <div className="flex gap-2 flex-wrap">
-                  <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(productUrl)}`}
+                  <a href={"https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(productUrl)}
                     target="_blank" rel="noopener noreferrer"
                     className="text-xs border border-brand-light px-3 py-2 text-brand-gray hover:border-brand-black transition-all">
                     📘 Facebook
