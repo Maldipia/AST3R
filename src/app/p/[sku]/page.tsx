@@ -8,7 +8,6 @@ import OrderButton     from './OrderButton';
 import Header          from '@/components/Header';
 import QRDownload      from './QRDownload';
 import ReviewForm      from './ReviewForm';
-import ShareCopyButton from './ShareCopyButton';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
 
