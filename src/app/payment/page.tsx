@@ -22,6 +22,11 @@ export default function PaymentPage() {
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPrev, setProofPrev] = useState<string | null>(null);
   const [loading,   setLoading]   = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoData, setPromoData] = useState<any>(null);
+  const [promoErr,  setPromoErr]  = useState('');
+  const [giftWrap,  setGiftWrap]  = useState(false);
+  const [giftMsg,   setGiftMsg]   = useState('');
 
   useEffect(() => {
     const cartRaw = sessionStorage.getItem('ast3r_cart');
@@ -37,7 +42,31 @@ export default function PaymentPage() {
 
   const subtotal     = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const shippingFee  = orderForm?.shipping_fee ?? 0;
-  const total        = subtotal + shippingFee;
+  const discount     = promoData
+    ? promoData.type === 'percent'       ? Math.round(subtotal * promoData.value / 100)
+    : promoData.type === 'fixed'         ? Math.min(promoData.value, subtotal)
+    : promoData.type === 'free_shipping' ? shippingFee
+    : 0
+    : 0;
+  const giftWrapFee  = giftWrap ? 50 : 0;
+  const total        = subtotal + shippingFee - discount + giftWrapFee;
+
+  const applyPromo = async () => {
+    if (!promoCode.trim()) return;
+    setPromoErr('');
+    const { data, error } = await (await import('@/lib/supabase')).supabase
+      .from('promo_codes')
+      .select('*')
+      .eq('code', promoCode.trim().toUpperCase())
+      .eq('active', true)
+      .single();
+    if (error || !data) { setPromoErr('Invalid or expired promo code'); setPromoData(null); return; }
+    if (data.min_order && subtotal < data.min_order) { setPromoErr(`Minimum order ₱${data.min_order} required`); setPromoData(null); return; }
+    if (data.expires_at && new Date(data.expires_at) < new Date()) { setPromoErr('This promo code has expired'); setPromoData(null); return; }
+    if (data.max_uses && data.uses >= data.max_uses) { setPromoErr('This promo code has reached its limit'); setPromoData(null); return; }
+    setPromoData(data);
+    toast.success(`Promo applied! ${data.type === 'percent' ? data.value + '% off' : data.type === 'free_shipping' ? 'Free shipping' : '₱' + data.value + ' off'}`);
+  };
 
   // ── Dropzone ──────────────────────────────────────────────
   const onDrop = useCallback((accepted: File[]) => {
@@ -101,6 +130,10 @@ export default function PaymentPage() {
           total_amount:   total,
           subtotal:       subtotal,
           shipping_fee:   shippingFee,
+          discount:       discount,
+          promo_code:     promoData?.code || null,
+          gift_wrap:      giftWrap,
+          gift_message:   giftMsg || null,
           region:         orderForm.region_label || orderForm.region_id || null,
           courier:        orderForm.courier || null,
           status:         'pending',
@@ -144,7 +177,19 @@ export default function PaymentPage() {
         });
       }
 
-      // 6. Clear session
+      // 6. Update promo code usage
+      if (promoData?.code) {
+        await supabase.from('promo_codes').update({ uses: (promoData.uses || 0) + 1 }).eq('code', promoData.code);
+      }
+
+      // 7. Send emails (non-blocking)
+      fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'confirmation', order_code: orderCode }),
+      }).catch(() => {});
+
+      // 8. Clear session
       sessionStorage.removeItem('ast3r_cart');
       sessionStorage.removeItem('ast3r_order_form');
 
@@ -362,17 +407,21 @@ export default function PaymentPage() {
               {/* Pricing breakdown */}
               <div className="border-t border-brand-light pt-3 space-y-2 mb-3">
                 <div className="flex justify-between text-xs text-brand-gray">
-                  <span>Subtotal</span>
-                  <span>{formatPrice(subtotal)}</span>
+                  <span>Subtotal</span><span>{formatPrice(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-xs text-brand-gray">
                   <span>Shipping ({orderForm?.region_label || 'Standard'})</span>
                   <span>{formatPrice(shippingFee)}</span>
                 </div>
-                {orderForm?.courier && (
+                {discount > 0 && (
+                  <div className="flex justify-between text-xs text-green-600 font-medium">
+                    <span>Discount {promoData?.code && `(${promoData.code})`}</span>
+                    <span>-{formatPrice(discount)}</span>
+                  </div>
+                )}
+                {giftWrap && (
                   <div className="flex justify-between text-xs text-brand-gray">
-                    <span>Courier</span>
-                    <span>{orderForm.courier}</span>
+                    <span>🎁 Gift Wrap</span><span>+₱50</span>
                   </div>
                 )}
               </div>

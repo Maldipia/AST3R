@@ -7,6 +7,7 @@ import { formatPrice, getStockLabel } from '@/lib/utils';
 import OrderButton     from './OrderButton';
 import Header          from '@/components/Header';
 import QRDownload      from './QRDownload';
+import ReviewForm      from './ReviewForm';
 
 // ── Generate static metadata per SKU ─────────────────────────
 export async function generateMetadata(
@@ -62,6 +63,21 @@ export default async function ProductPage({
 
   // Track QR scan (non-blocking)
   supabase.rpc('track_qr_scan', { p_sku: sku }).then(() => {});
+
+  // Fetch related products (same category, different SKU)
+  const { data: relatedProducts } = await supabase
+    .from('products').select('sku, name, price, compare_price, image_url, category')
+    .eq('status', 'active').eq('category', product.category)
+    .neq('sku', sku).limit(4);
+
+  // Fetch verified reviews
+  const { data: reviews } = await supabase
+    .from('reviews').select('customer_name, rating, comment, created_at')
+    .eq('sku', sku).eq('verified', true).order('created_at', { ascending: false });
+
+  const avgRating = reviews?.length
+    ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
+    : null;
 
   const hasSizes    = sizeInventory && sizeInventory.length > 0;
   const totalSizeQty = hasSizes ? sizeInventory!.reduce((sum, s) => sum + s.quantity, 0) : (product.quantity ?? 0);
@@ -220,9 +236,138 @@ export default async function ProductPage({
 
               {/* QR Download (admin use) */}
               <QRDownload sku={product.sku} productName={product.name} />
+
+              {/* Share buttons */}
+              <div className="mt-8 pt-8 border-t border-brand-light">
+                <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-3">Share</p>
+                <div className="flex gap-2">
+                  {[
+                    { label: 'Facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store'}/p/${product.sku}`)}`, icon: '📘' },
+                    { label: 'Instagram', href: `https://instagram.com`, icon: '📷' },
+                    { label: 'Copy Link', href: '#', icon: '🔗', copy: true },
+                  ].map(({ label, href, icon, copy }) => (
+                    <a key={label}
+                      href={href}
+                      target={copy ? undefined : '_blank'}
+                      rel="noopener noreferrer"
+                      onClick={copy ? (e) => { e.preventDefault(); navigator.clipboard.writeText(window.location.href); } : undefined}
+                      className="flex items-center gap-1.5 text-xs border border-brand-light px-3 py-2 text-brand-gray hover:border-brand-black hover:text-brand-black transition-all">
+                      {icon} {label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              {/* Size Guide */}
+              <details className="mt-6 border border-brand-light">
+                <summary className="px-4 py-3 text-xs font-medium tracking-widest uppercase cursor-pointer hover:bg-brand-cream transition-colors flex items-center justify-between">
+                  <span>📏 Size Guide</span>
+                  <span className="text-brand-gray">+</span>
+                </summary>
+                <div className="px-4 pb-4 overflow-x-auto">
+                  <table className="w-full text-xs mt-3 border-collapse">
+                    <thead>
+                      <tr className="bg-brand-cream">
+                        {['Size','Bust (in)','Waist (in)','Hip (in)','Height'].map(h => (
+                          <th key={h} className="px-3 py-2 text-left font-medium text-brand-gray border border-brand-light">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ['XS','30–32','24–26','33–35','5'0–5'2"'],
+                        ['S', '33–34','26–28','35–37','5'2–5'4"'],
+                        ['M', '35–36','28–30','37–39','5'4–5'6"'],
+                        ['L', '37–39','31–33','40–42','5'6–5'8"'],
+                        ['XL','40–42','34–36','43–45','5'8–5'10"'],
+                        ['XXL','43–46','37–40','46–49','5'10–6'0"'],
+                        ['Free Size','Fits S–L','—','—','5'2–5'7"'],
+                      ].map(row => (
+                        <tr key={row[0]} className="hover:bg-brand-cream">
+                          {row.map((cell, i) => (
+                            <td key={i} className={`px-3 py-2 border border-brand-light ${i===0 ? 'font-bold' : ''}`}>{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-xs text-brand-gray mt-3">💡 AST3R follows Asian sizing. When in doubt, size up.</p>
+                </div>
+              </details>
             </div>
           </div>
         </div>
+
+        {/* ── Reviews ─────────────────────────────────── */}
+        <div className="border-t border-brand-light py-16 px-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-end justify-between mb-8">
+              <div>
+                <span className="accent-line mb-3" />
+                <h2 className="display-md text-brand-black">
+                  Customer Reviews
+                  {avgRating && <span className="ml-3 font-serif text-2xl text-brand-orange">★ {avgRating}</span>}
+                </h2>
+              </div>
+              <span className="text-xs text-brand-gray">{reviews?.length || 0} review{reviews?.length !== 1 ? 's' : ''}</span>
+            </div>
+
+            {reviews && reviews.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+                {reviews.map((r: any, i: number) => (
+                  <div key={i} className="border border-brand-light p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-brand-orange text-sm">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                    </div>
+                    <p className="text-sm text-brand-black leading-relaxed mb-3">"{r.comment}"</p>
+                    <p className="text-xs text-brand-gray font-medium">{r.customer_name}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-brand-gray text-sm mb-8">No reviews yet. Be the first!</p>
+            )}
+
+            {/* Leave a review form */}
+            <ReviewForm sku={product.sku} />
+          </div>
+        </div>
+
+        {/* ── Related Products ─────────────────────────── */}
+        {relatedProducts && relatedProducts.length > 0 && (
+          <div className="border-t border-brand-light py-16 px-4 bg-brand-cream">
+            <div className="max-w-7xl mx-auto">
+              <div className="mb-8">
+                <span className="accent-line mb-3" />
+                <h2 className="display-md text-brand-black">You Might Also Like</h2>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {relatedProducts.map(rp => (
+                  <a key={rp.sku} href={`/p/${rp.sku}`} className="group block">
+                    <div className="relative aspect-[3/4] bg-white overflow-hidden mb-3">
+                      {rp.image_url
+                        ? <img src={rp.image_url} alt={rp.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        : <div className="w-full h-full flex items-center justify-center text-brand-light">AST3R</div>
+                      }
+                    </div>
+                    <p className="text-xs text-brand-gray">{rp.category}</p>
+                    <p className="text-sm font-medium text-brand-black group-hover:text-brand-orange transition-colors">{rp.name}</p>
+                    <div className="flex items-baseline gap-2 mt-0.5">
+                      {rp.compare_price && rp.compare_price < rp.price ? (
+                        <>
+                          <span className="text-sm font-medium text-red-600">{formatPrice(rp.compare_price)}</span>
+                          <span className="text-xs text-brand-gray line-through">{formatPrice(rp.price)}</span>
+                        </>
+                      ) : (
+                        <span className="text-sm font-medium">{formatPrice(rp.price)}</span>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Footer */}

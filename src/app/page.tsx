@@ -1,20 +1,34 @@
 // src/app/page.tsx
+'use client';
+
+import { useState, useMemo, useEffect } from 'react';
 import Image  from 'next/image';
 import Link   from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
 import Header from '@/components/Header';
 
-export const revalidate = 60; // ISR: revalidate every 60s
+export default function HomePage() {
+  const [products,  setProducts]  = useState<any[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [search,    setSearch]    = useState('');
+  const [activecat, setActiveCat] = useState('All');
 
-export default async function HomePage() {
-  const { data: products } = await supabase
-    .from('products')
-    .select(`*, inventory(quantity)`)
-    .eq('status', 'active')
-    .order('created_at', { ascending: false });
+  useEffect(() => {
+    supabase.from('products').select('*, inventory(quantity)')
+      .eq('status', 'active').order('created_at', { ascending: false })
+      .then(({ data }) => { setProducts(data || []); setLoading(false); });
+  }, []);
 
-  const categories = [...new Set(products?.map(p => p.category) || [])];
+  const categories = useMemo(() => ['All', ...new Set(products.map(p => p.category))], [products]);
+
+  const filtered = useMemo(() => {
+    return products.filter(p => {
+      const matchCat    = activecat === 'All' || p.category === activecat;
+      const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
+      return matchCat && matchSearch;
+    });
+  }, [products, activecat, search]);
 
   return (
     <>
@@ -92,22 +106,43 @@ export default async function HomePage() {
             </div>
 
             {/* Category filter */}
-            {categories.length > 1 && (
-              <div className="flex flex-wrap gap-2 mb-10">
-                {['All', ...categories].map((cat) => (
-                  <span
-                    key={cat}
-                    className="px-4 py-1.5 text-xs tracking-widest uppercase border border-brand-light text-brand-gray cursor-pointer hover:border-brand-black hover:text-brand-black transition-all"
-                  >
-                    {cat}
-                  </span>
-                ))}
+            <div className="flex flex-wrap gap-2 mb-8">
+              {categories.map((cat) => (
+                <button key={cat} onClick={() => setActiveCat(cat)}
+                  className={`px-4 py-1.5 text-xs tracking-widest uppercase border transition-all ${
+                    activecat === cat
+                      ? 'border-brand-black bg-brand-black text-white'
+                      : 'border-brand-light text-brand-gray hover:border-brand-black hover:text-brand-black'
+                  }`}>
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Search bar */}
+            <div className="relative max-w-sm mb-6">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray">🔍</span>
+              <input type="text" placeholder="Search products…" value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full border border-brand-light pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-brand-black bg-white" />
+              {search && <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-gray hover:text-brand-black text-xs">✕</button>}
+            </div>
+
+            {/* Results count */}
+            {(search || activecat !== "All") && (
+              <p className="text-xs text-brand-gray mb-4">{filtered.length} product{filtered.length !== 1 ? "s" : ""}{activecat !== "All" ? ` in ${activecat}` : ""}{search ? ` matching "${search}"` : ""}</p>
+            )}
+
+            {/* Loading */}
+            {loading && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {[1,2,3,4,5,6].map(i => <div key={i} className="skeleton aspect-[3/4]" />)}
               </div>
             )}
 
             {/* Product Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {products?.map((product, i) => {
+              {filtered.map((product, i) => {
                 const stock = product.inventory?.[0]?.quantity ?? 0;
                 return (
                   <Link
