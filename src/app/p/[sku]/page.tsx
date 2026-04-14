@@ -43,7 +43,8 @@ export default async function ProductPage(
     notFound();
   }
 
-  const [sizeRes, relatedRes, reviewsRes] = await Promise.all([
+  const [cpRes, sizeRes, relatedRes, reviewsRes] = await Promise.all([
+    supabase.from('products').select('compare_price').eq('sku', sku).single(),
     supabase.from('size_inventory').select('size, quantity').eq('sku', sku).order('size'),
     supabase.from('products')
       .select('sku, name, price, compare_price, image_url, category')
@@ -58,8 +59,7 @@ export default async function ProductPage(
       .order('created_at', { ascending: false }),
   ]);
 
-  // compare_price now comes from the RPC directly (no extra query needed)
-  const comparePrice = (product.compare_price as number) || null;
+  const comparePrice: number | null = cpRes.data?.compare_price ?? null;
   const sizeInventory = sizeRes.data || [];
   const relatedProducts = relatedRes.data || [];
   const reviews = reviewsRes.data || [];
@@ -76,8 +76,9 @@ export default async function ProductPage(
     : (product.quantity || 0);
   const { label: stockLabel, color: stockColor } = getStockLabel(totalSizeQty);
   const inStock = totalSizeQty > 0;
-  const isOnSale = comparePrice && comparePrice < product.price;
-  const discountPct = isOnSale ? Math.round((1 - comparePrice / product.price) * 100) : 0;
+  const origPrice  = Number(product.price) || 0;
+  const isOnSale   = comparePrice !== null && comparePrice > 0 && comparePrice < origPrice;
+  const discountPct = isOnSale ? Math.round((1 - (comparePrice as number) / origPrice) * 100) : 0;
   const productUrl = APP_URL + '/p/' + product.sku;
   const shareUrl = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(productUrl);
 
@@ -146,14 +147,14 @@ export default async function ProductPage(
                   <div>
                     <div className="flex items-baseline gap-3 flex-wrap">
                       <span className="font-serif text-3xl font-medium text-red-600">
-                        {formatPrice(comparePrice, product.currency)}
+                        {formatPrice(comparePrice as number, product.currency)}
                       </span>
                       <span className="font-serif text-xl text-brand-gray line-through">
                         {formatPrice(product.price, product.currency)}
                       </span>
                     </div>
                     <p className="text-xs text-green-600 mt-1 font-medium">
-                      You save {formatPrice(product.price - comparePrice)}
+                      You save {formatPrice(origPrice - (comparePrice as number))}
                     </p>
                   </div>
                 ) : (
