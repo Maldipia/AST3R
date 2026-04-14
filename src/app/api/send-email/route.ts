@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
         total_amount:   order.total_amount,
         payment_method: payment.data?.payment_method || 'Unknown',
         region:         order.region || '',
-        items:          items.map(i => ({ sku: i.sku, quantity: i.quantity })),
+        items:          items.map((i: any) => ({ sku: i.sku, quantity: i.quantity })),
       });
     }
 

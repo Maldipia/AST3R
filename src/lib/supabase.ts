@@ -62,10 +62,12 @@ export type Payment = {
   created_at: string;
 };
 
+// CartItem type is in lib/cart.ts
 export type CartItem = {
   sku: string;
   name: string;
   price: number;
   quantity: number;
   image_url: string;
+  size?:     string;
 };

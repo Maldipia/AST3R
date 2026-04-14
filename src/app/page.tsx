@@ -31,7 +31,7 @@ export default async function HomePage() {
     return true;
   });
 
-  const categories = ['All', ...new Set(products.map(p => p.category))];
+  const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
 
   return (
     <>

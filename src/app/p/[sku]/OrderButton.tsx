@@ -1,7 +1,7 @@
 // src/app/p/[sku]/OrderButton.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter }  from 'next/navigation';
 import toast          from 'react-hot-toast';
 import { addToCart }  from '@/lib/cart';

@@ -8,7 +8,7 @@ import Link                    from 'next/link';
 import toast                   from 'react-hot-toast';
 import { formatPrice }         from '@/lib/utils';
 import { REGIONS, guessRegionFromAddress, type RegionId } from '@/lib/shipping';
-import type { CartItem }       from '@/lib/supabase';
+import type { CartItem }       from '@/lib/cart';
 
 // ── COD shipping fee logic ─────────────────────────────────────
 // 1 item = ₱199, each additional item +₱99
