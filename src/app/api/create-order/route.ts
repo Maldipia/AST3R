@@ -59,8 +59,9 @@ export async function POST(req: NextRequest) {
 
     // 3. Decrement inventory (non-blocking)
     for (const item of cart) {
-      await supabase.rpc('decrement_inventory', { p_sku: item.sku, p_qty: item.quantity })
-        .catch(() => {});
+      try {
+        await supabase.rpc('decrement_inventory', { p_sku: item.sku, p_qty: item.quantity });
+      } catch {}
     }
 
     // 4. Insert payment record
