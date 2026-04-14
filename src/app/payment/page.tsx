@@ -106,67 +106,35 @@ export default function PaymentPage() {
     try {
       const orderCode = generateOrderCode();
 
-      // 1. Create order
-      const { data: order, error: orderErr } = await supabase.from('orders').insert({
-        order_code:     orderCode,
-        customer_name:  orderForm.customer_name,
-        contact_number: orderForm.contact_number,
-        email:          orderForm.email || null,
-        address_full:   (orderForm.address_full + ', ' + orderForm.city).trim(),
-        notes:          orderForm.notes || null,
-        total_amount:   total,
-        subtotal:       subtotal,
-        shipping_fee:   shippingFee,
-        discount:       discount,
-        promo_code:     promoData?.code || null,
-        gift_wrap:      giftWrap,
-        gift_message:   giftMsg || null,
-        region:         orderForm.region_label || orderForm.region_id || null,
-        courier:        orderForm.courier || null,
-        payment_method_type: method!.type,
-        payment_due_date: isPayLater ? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString() : null,
-        status:         'pending',
-      }).select('id').single();
-      if (orderErr) throw orderErr;
-
-      // 2. Insert order items
-      const items = cart.map(i => ({ order_id: order.id, sku: i.sku, quantity: i.quantity, price: i.price }));
-      const { error: itemErr } = await supabase.from('order_items').insert(items);
-      if (itemErr) throw itemErr;
-
-      // 3. Decrement stock
-      for (const item of cart) {
-        await supabase.rpc('decrement_inventory', { p_sku: item.sku, p_qty: item.quantity }).catch(() => {});
-      }
-
-      // 4. Upload payment proof (if provided)
+      // Upload payment proof first if provided
       let proofUrl = null;
       if (proofFile) {
-        const ext  = proofFile.name.split('.').pop() || 'jpg';
-        const fn   = 'proof-' + orderCode + '.' + ext;
-        const { error: upErr } = await supabase.storage.from('payment-proofs').upload(fn, proofFile, { upsert: true });
+        const ext = proofFile.name.split('.').pop() || 'jpg';
+        const fn  = 'proof-' + orderCode + '.' + ext;
+        const { error: upErr } = await supabase.storage
+          .from('payment-proofs').upload(fn, proofFile, { upsert: true });
         if (!upErr) {
-          const { data: { publicUrl } } = supabase.storage.from('payment-proofs').getPublicUrl(fn);
+          const { data: { publicUrl } } = supabase.storage
+            .from('payment-proofs').getPublicUrl(fn);
           proofUrl = publicUrl;
         }
       }
 
-      // 5. Create payment record
-      const { error: payErr } = await supabase.from('payments').insert({
-        order_id:           order.id,
-        payment_method:     method!.label,
-        amount:             total,
-        status:             isCOD || isCOP || isPayLater ? 'pending' : 'pending',
-        payment_proof_url:  proofUrl,
+      // Create order via API route (uses service role — no RLS issues)
+      const res = await fetch('/api/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderCode, orderForm, cart,
+          total, subtotal, shippingFee, discount,
+          promoData, giftWrap, giftMsg,
+          method, proofUrl,
+        }),
       });
-      if (payErr) throw payErr;
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to create order');
 
-      // 6. Update promo usage
-      if (promoData?.code) {
-        await supabase.from('promo_codes').update({ uses: (promoData.uses || 0) + 1 }).eq('code', promoData.code);
-      }
-
-      // 7. Send confirmation email (non-blocking)
+            // 7. Send confirmation email (non-blocking)
       fetch('/api/send-email', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'confirmation', order_code: orderCode }),
