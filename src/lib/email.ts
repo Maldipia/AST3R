@@ -89,7 +89,7 @@ export async function sendOrderConfirmation(order: {
 
   const html = baseTemplate(`
     <h2>Thank you, ${order.customer_name}! 🎉</h2>
-    <p>Your order has been received and is being processed. ${isCOD ? 'Our team will contact you to confirm delivery.' : 'Once we verify your payment, we\'ll prepare your order right away.'}</p>
+    <p>Your order has been received and is being processed. ${isCOD ? 'Our team will contact you to confirm delivery.' : 'Our team will review and verify your payment. Once confirmed, we will process and ship your order.'}</p>
 
     <div class="order-box">
       <p style="color:#aaa; font-size:11px; margin:0 0 8px; letter-spacing:2px;">YOUR ORDER CODE</p>
@@ -170,7 +170,7 @@ export async function sendShippingUpdate(order: {
   const statusMessages: Record<string, { title: string; msg: string }> = {
     paid:      { title: 'Payment Verified ✅', msg: 'Your payment has been confirmed. We\'re now preparing your order!' },
     shipped:   { title: 'Your Order is On Its Way! 🚚', msg: `Your order has been shipped via ${order.courier}. ${order.tracking_number ? `Tracking number: <strong>${order.tracking_number}</strong>` : 'You\'ll receive tracking info from the courier.'}` },
-    cancelled: { title: 'Order Cancelled', msg: 'Your order has been cancelled. If you paid, a refund will be processed within 3–5 business days.' },
+    cancelled: { title: 'Order Cancelled', msg: 'Your order has been cancelled. If you paid, a refund will be processed within 3–5 business days (Metro Manila).' },
   };
 
   const info = statusMessages[order.status];

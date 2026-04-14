@@ -97,7 +97,8 @@ export default function CheckoutPage() {
     if (!form.province.trim())       { toast.error('Province is required'); return false; }
     if (!form.region_id)             { toast.error('Please select your region'); return false; }
     if (!form.courier)               { toast.error('Please choose a courier'); return false; }
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+    if (!form.email.trim()) { toast.error('Email address is required for order updates'); return false; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
       toast.error('Enter a valid email address'); return false;
     }
     return true;
@@ -179,12 +180,12 @@ export default function CheckoutPage() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gray-900 transition-all" required />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Email Address</label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Email Address *</label>
                     <input type="email" value={form.email}
                       onChange={e => set('email', e.target.value)}
                       placeholder="yourname@email.com"
                       className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gray-900 transition-all" />
-                    <p className="text-xs text-gray-400 mt-1">For order confirmation & tracking</p>
+                    <p className="text-xs text-gray-400 mt-1">Required — we'll send your order updates here</p>
                   </div>
                 </div>
               </div>
