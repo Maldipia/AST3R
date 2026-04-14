@@ -849,6 +849,10 @@ export default function AdminPage() {
   const [qrProd,     setQrProd]     = useState<Product | null>(null);
   const [genZip,     setGenZip]     = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
+  const [bulkSale, setBulkSale] = useState(false);
+  const [bulkCat,  setBulkCat]  = useState('');
+  const [bulkPct,  setBulkPct]  = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [editPrices, setEditPrices] = useState<Record<string,string>>({});
   const [editStocks, setEditStocks] = useState<Record<string,string>>({});
   const [stats, setStats] = useState({ orders:0, revenue:0, pending:0, products:0, lowStock:0 });
@@ -918,6 +922,37 @@ export default function AdminPage() {
   const loadPayMethods = async () => {
     const { data } = await supabase.from('payment_qr_codes').select('*').order('sort_order');
     if (data) setPayMethods(data as PaymentMethod[]);
+  };
+
+  const applyBulkSale = async () => {
+    if (!bulkCat || !bulkPct) { toast.error('Select category and discount %'); return; }
+    const pct = parseFloat(bulkPct);
+    if (isNaN(pct) || pct <= 0 || pct >= 100) { toast.error('Enter a valid discount % (1-99)'); return; }
+    setBulkBusy(true);
+    const targets = products.filter(p => bulkCat === 'All' || p.category === bulkCat);
+    let count = 0;
+    for (const p of targets) {
+      const salePrice = Math.round(p.price * (1 - pct / 100));
+      const { error } = await supabase.from('products').update({ compare_price: salePrice }).eq('sku', p.sku).select();
+      if (!error) count++;
+    }
+    toast.success(`Applied ${pct}% off to ${count} products`);
+    setBulkBusy(false);
+    setBulkSale(false);
+    setBulkPct('');
+    loadProducts();
+  };
+
+  const clearBulkSale = async () => {
+    if (!bulkCat) { toast.error('Select a category first'); return; }
+    setBulkBusy(true);
+    const targets = products.filter(p => bulkCat === 'All' || p.category === bulkCat);
+    for (const p of targets) {
+      await supabase.from('products').update({ compare_price: null }).eq('sku', p.sku).select();
+    }
+    toast.success(`Cleared sale prices for ${targets.length} products`);
+    setBulkBusy(false);
+    loadProducts();
   };
 
   const loadAll = useCallback(async () => {
@@ -1256,6 +1291,7 @@ export default function AdminPage() {
                   <div className="flex gap-2 ml-auto">
                     <button onClick={loadProducts} className="border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-white hover:bg-gray-50 transition-colors shadow-sm">↻</button>
                     <button onClick={() => setShowCSV(true)} className="border border-gray-800 rounded-lg px-4 py-2.5 text-sm bg-white hover:bg-gray-900 hover:text-white transition-colors shadow-sm">CSV</button>
+                  <button onClick={() => setBulkSale(v => !v)} className={`border rounded-lg px-4 py-2.5 text-sm transition-colors shadow-sm ${bulkSale ? 'bg-orange-500 text-white border-orange-500' : 'border-orange-300 text-orange-500 hover:bg-orange-50'}`}>🏷️ Bulk Sale</button>
                   </div>
                 </div>
                 {/* Row 2: Category tabs */}
@@ -1286,6 +1322,48 @@ export default function AdminPage() {
                 )}
               </div>
               <div className="h-2" />
+
+              {/* Bulk Sale Panel */}
+              {bulkSale && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-5 mb-4">
+                  <h3 className="font-semibold text-orange-800 mb-3">🏷️ Bulk Sale Pricing</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                    <div>
+                      <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Category</label>
+                      <select value={bulkCat} onChange={e => setBulkCat(e.target.value)}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-orange-400">
+                        <option value="">Select category</option>
+                        <option value="All">All Products</option>
+                        {CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Discount %</label>
+                      <input type="number" min="1" max="99" value={bulkPct}
+                        onChange={e => setBulkPct(e.target.value)}
+                        placeholder="e.g. 20"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400 mb-1">Preview</p>
+                      <p className="text-sm text-gray-700 font-medium">
+                        {bulkCat && bulkPct ? `${products.filter(p => bulkCat === 'All' || p.category === bulkCat).length} products → -${bulkPct}% off` : '—'}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={applyBulkSale} disabled={bulkBusy || !bulkCat || !bulkPct}
+                        className="flex-1 bg-orange-500 text-white py-2.5 text-sm font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50">
+                        {bulkBusy ? 'Applying...' : 'Apply Sale'}
+                      </button>
+                      <button onClick={clearBulkSale} disabled={bulkBusy || !bulkCat}
+                        className="flex-1 border border-gray-300 text-gray-600 py-2.5 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-orange-600 mt-3">⚠️ This will overwrite existing sale prices for the selected category.</p>
+                </div>
+              )}
 
               {/* Table */}
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">

@@ -318,7 +318,7 @@ export default function CheckoutPage() {
                 {/* Items */}
                 <div className="space-y-3">
                   {cart.map(item => (
-                    <div key={item.sku} className="flex gap-3">
+                    <div key={item.sku + (item.size || '')} className="flex gap-3">
                       <div className="relative w-14 h-16 bg-gray-100 flex-shrink-0 rounded-lg overflow-hidden">
                         {item.image_url && (
                           <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="56px" />
@@ -326,7 +326,10 @@ export default function CheckoutPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                        <p className="text-xs text-gray-400 font-mono mt-0.5">{item.sku}</p>
+                        <div className="flex gap-2 mt-0.5">
+                          <p className="text-xs text-gray-400 font-mono">{item.sku}</p>
+                          {item.size && <p className="text-xs text-gray-500 font-medium">· {item.size}</p>}
+                        </div>
                         <div className="flex items-center justify-between mt-1">
                           <p className="text-xs text-gray-400">Qty: {item.quantity}</p>
                           <p className="text-sm font-semibold text-gray-900">{formatPrice(item.price * item.quantity)}</p>

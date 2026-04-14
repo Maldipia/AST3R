@@ -3,6 +3,7 @@
 
 import Link          from 'next/link';
 import { useState }  from 'react';
+import CartDrawer    from './CartDrawer';
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -31,8 +32,11 @@ export default function Header() {
             <a href="https://instagram.com/ast3r.ph" target="_blank" rel="noopener noreferrer" className="nav-link">Instagram</a>
           </nav>
 
+          {/* Cart */}
+          <CartDrawer />
+
           {/* Mobile menu button */}
-          <button className="md:hidden ml-auto text-brand-gray hover:text-brand-black transition-colors"
+          <button className="md:hidden text-brand-gray hover:text-brand-black transition-colors"
             onClick={() => setMenuOpen(!menuOpen)}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}

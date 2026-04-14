@@ -23,10 +23,13 @@ const STATUS_INDEX: Record<string, number> = {
 
 function TrackPageInner() {
   const params    = useSearchParams();
-  const [code,    setCode]    = useState(params.get('code') || '');
-  const [order,   setOrder]   = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
+  const [code,         setCode]        = useState(params.get('code') || '');
+  const [order,        setOrder]        = useState<any>(null);
+  const [orders,       setOrders]       = useState<any[]>([]);
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState('');
+  const [searchMode,   setSearchMode]   = useState<'code'|'phone'>('code');
+  const [phoneSearch,  setPhoneSearch]  = useState('');
 
   const track = async (orderCode: string) => {
     if (!orderCode.trim()) return;
@@ -42,6 +45,23 @@ function TrackPageInner() {
   };
 
   useEffect(() => { if (params.get('code')) track(params.get('code')!); }, []);
+
+  const trackByPhone = async () => {
+    if (!phoneSearch.trim()) return;
+    setLoading(true); setError(''); setOrder(null); setOrders([]);
+    const isEmail = phoneSearch.includes('@');
+    const query   = isEmail
+      ? `email=eq.${encodeURIComponent(phoneSearch.trim())}`
+      : `contact_number=eq.${phoneSearch.trim()}`;
+    const { data, error: err } = await supabase
+      .from('orders')
+      .select('*, order_items(sku, quantity, price, products(name)), payments(payment_method, status)')
+      .or(isEmail ? `email.eq.${phoneSearch.trim()}` : `contact_number.eq.${phoneSearch.trim()}`)
+      .order('created_at', { ascending: false });
+    setLoading(false);
+    if (err || !data || data.length === 0) { setError('No orders found for that ' + (isEmail ? 'email' : 'phone number')); return; }
+    setOrders(data);
+  };
 
   const stepIdx   = order ? (STATUS_INDEX[order.status] ?? 0) : -1;
   const isCancelled = order?.status === 'cancelled';
@@ -81,6 +101,31 @@ function TrackPageInner() {
             </div>
             {error && <p className="text-red-500 text-sm mt-3">❌ {error}</p>}
           </div>
+
+          {/* Multiple orders result (by phone/email) */}
+          {orders.length > 0 && !order && (
+            <div className="space-y-4 animate-fade-up">
+              <p className="text-sm text-brand-gray">{orders.length} order{orders.length !== 1 ? 's' : ''} found</p>
+              {orders.map(o => (
+                <button key={o.id} onClick={() => { setOrder(o); setOrders([]); }}
+                  className="w-full bg-white border border-brand-light p-5 text-left hover:border-brand-black transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-mono font-bold text-brand-black">{o.order_code}</p>
+                    <span className={`text-xs px-2 py-0.5 ${
+                      o.status === 'shipped' ? 'bg-blue-50 text-blue-700' :
+                      o.status === 'paid'    ? 'bg-green-50 text-green-700' :
+                      'bg-amber-50 text-amber-700'
+                    }`}>{o.status}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <p className="text-brand-gray">{formatDate(o.created_at)}</p>
+                    <p className="font-semibold text-brand-black">{formatPrice(o.total_amount)}</p>
+                  </div>
+                  <p className="text-xs text-brand-gray mt-1">{(o.order_items || []).length} item{(o.order_items || []).length !== 1 ? 's' : ''} · {o.payments?.[0]?.payment_method || 'Unknown payment'}</p>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Order Result */}
           {order && (
