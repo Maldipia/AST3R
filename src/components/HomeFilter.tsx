@@ -10,15 +10,16 @@ type Product = {
   id: string; sku: string; name: string;
   price: number; compare_price: number | null;
   image_url: string; category: string;
-  inventory: { quantity: number }[];
 };
 
 export default function HomeFilter({
   products,
   categories,
+  invMap = {},
 }: {
   products: Product[];
   categories: string[];
+  invMap?: Record<string, number>;
 }) {
   const [search, setSearch]   = useState('');
   const [cat,    setCat]      = useState('All');
@@ -73,7 +74,7 @@ export default function HomeFilter({
       {/* Product grid */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
         {filtered.map(product => {
-          const stock      = product.inventory?.[0]?.quantity ?? 0;
+          const stock      = invMap[product.sku] ?? 0;
           const salePrice  = product.compare_price;
           const origPrice  = product.price;
           const isOnSale   = salePrice !== null && salePrice > 0 && salePrice < origPrice;

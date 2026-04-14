@@ -9,11 +9,19 @@ import HomeFilter from '@/components/HomeFilter';
 export const revalidate = 60;
 
 export default async function HomePage() {
+  // Fetch products without joins to avoid duplicate rows from size_inventory
   const { data: allProducts } = await supabase
     .from('products')
-    .select('id, sku, name, price, compare_price, image_url, category, status, inventory(quantity)')
+    .select('id, sku, name, price, compare_price, image_url, category, status')
     .eq('status', 'active')
     .order('created_at', { ascending: false });
+
+  // Fetch inventory separately to get stock counts
+  const { data: inventoryData } = await supabase
+    .from('inventory')
+    .select('sku, quantity');
+  const invMap: Record<string, number> = {};
+  (inventoryData || []).forEach(i => { invMap[i.sku] = i.quantity; });
 
   // Deduplicate by SKU
   const seen = new Set<string>();
@@ -73,7 +81,7 @@ export default async function HomePage() {
             </div>
 
             {/* Client filter component handles search + category tabs */}
-            <HomeFilter products={products} categories={categories} />
+            <HomeFilter products={products} categories={categories} invMap={invMap} />
           </div>
         </section>
 
