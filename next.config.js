@@ -8,11 +8,18 @@ const nextConfig = {
       { protocol: 'https', hostname: 'api.qrserver.com' },
     ],
   },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
+  typescript: { ignoreBuildErrors: true },
+  eslint:     { ignoreDuringBuilds: true },
+  // Prevent browser caching of pages so updates always show immediately
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, must-revalidate' },
+        ],
+      },
+    ];
   },
 };
 
