@@ -43,8 +43,7 @@ export default async function ProductPage(
     notFound();
   }
 
-  const [priceRes, sizeRes, relatedRes, reviewsRes] = await Promise.all([
-    supabase.from('products').select('compare_price').eq('sku', sku).single(),
+  const [sizeRes, relatedRes, reviewsRes] = await Promise.all([
     supabase.from('size_inventory').select('size, quantity').eq('sku', sku).order('size'),
     supabase.from('products')
       .select('sku, name, price, compare_price, image_url, category')
@@ -59,7 +58,8 @@ export default async function ProductPage(
       .order('created_at', { ascending: false }),
   ]);
 
-  const comparePrice = (priceRes.data && priceRes.data.compare_price) || null;
+  // compare_price now comes from the RPC directly (no extra query needed)
+  const comparePrice = (product.compare_price as number) || null;
   const sizeInventory = sizeRes.data || [];
   const relatedProducts = relatedRes.data || [];
   const reviews = reviewsRes.data || [];

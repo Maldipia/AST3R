@@ -204,18 +204,22 @@ export default function HomePage() {
                         {product.name}
                       </h3>
                       <div className="flex items-baseline gap-2 flex-wrap">
-                        <p className="font-serif text-lg text-brand-black">
-                          {formatPrice(product.price, product.currency)}
-                        </p>
-                        {product.compare_price && product.compare_price < product.price && (
-                          <p className="font-serif text-sm text-brand-gray line-through">
-                            {formatPrice(product.compare_price)}
+                        {product.compare_price && product.compare_price < product.price ? (
+                          <div className="flex items-baseline gap-2 flex-wrap">
+                            <p className="font-serif text-lg text-red-600 font-medium">
+                              {formatPrice(product.compare_price, product.currency)}
+                            </p>
+                            <p className="font-serif text-sm text-brand-gray line-through">
+                              {formatPrice(product.price, product.currency)}
+                            </p>
+                            <span className="text-xs font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-sm">
+                              -{Math.round((1 - product.compare_price / product.price) * 100)}%
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="font-serif text-lg text-brand-black">
+                            {formatPrice(product.price, product.currency)}
                           </p>
-                        )}
-                        {product.compare_price && product.compare_price < product.price && (
-                          <span className="text-xs font-bold text-white bg-red-500 px-1.5 py-0.5">
-                            -{Math.round((1 - product.compare_price / product.price) * 100)}%
-                          </span>
                         )}
                       </div>
                     </div>
