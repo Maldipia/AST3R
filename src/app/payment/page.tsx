@@ -44,8 +44,13 @@ export default function PaymentPage() {
       .then(({ data }) => { if (data) setMethods(data); });
   }, [router]);
 
-  const subtotal    = cart.reduce((s, i) => s + i.price * i.quantity, 0);
-  const shippingFee = orderForm?.shipping_fee ?? 0;
+  const subtotal        = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+  const isCODSelected   = method?.type === 'cod';
+  // COD uses tiered fee: ₱199 first item + ₱99 each additional
+  const codShippingFee  = orderForm?.cod_shipping_fee ?? (
+    orderForm?.total_items ? 199 + Math.max(0, (orderForm.total_items - 1)) * 99 : 199
+  );
+  const shippingFee     = isCODSelected ? codShippingFee : (orderForm?.shipping_fee ?? 0);
   const discount    = promoData
     ? promoData.type === 'percent'       ? Math.round(subtotal * promoData.value / 100)
     : promoData.type === 'fixed'         ? Math.min(promoData.value, subtotal)
@@ -354,6 +359,23 @@ export default function PaymentPage() {
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
                   <p className="text-2xl mb-3">💵</p>
                   <h3 className="font-semibold text-amber-800 mb-2">Cash on Delivery</h3>
+                  {/* COD fee breakdown */}
+                  <div className="bg-white border border-amber-200 rounded-lg p-3 mb-4">
+                    <p className="text-xs font-semibold text-amber-800 mb-2">COD Shipping Fee Breakdown</p>
+                    <div className="space-y-1 text-xs text-amber-700">
+                      <div className="flex justify-between"><span>1st item</span><span className="font-medium">₱199</span></div>
+                      {(orderForm?.total_items || 1) > 1 && (
+                        <div className="flex justify-between">
+                          <span>{(orderForm?.total_items || 1) - 1} additional item{(orderForm?.total_items || 1) - 1 > 1 ? 's' : ''} × ₱99</span>
+                          <span className="font-medium">₱{((orderForm?.total_items || 1) - 1) * 99}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between border-t border-amber-200 pt-1 font-bold text-amber-900">
+                        <span>Total COD Shipping</span>
+                        <span>{formatPrice(codShippingFee)}</span>
+                      </div>
+                    </div>
+                  </div>
                   <ul className="text-sm text-amber-700 space-y-1.5">
                     <li>✅ Pay cash when your order arrives</li>
                     <li>✅ Prepare exact amount: <strong>{formatPrice(total)}</strong></li>
