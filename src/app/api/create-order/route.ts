@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 // src/app/api/create-order/route.ts
 // Uses service role key — bypasses RLS entirely
 import { NextRequest, NextResponse } from 'next/server';

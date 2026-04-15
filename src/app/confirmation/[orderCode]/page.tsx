@@ -1,3 +1,5 @@
+'use client';
+
 // src/app/confirmation/[orderCode]/page.tsx
 import Link        from 'next/link';
 import { supabase } from '@/lib/supabase';

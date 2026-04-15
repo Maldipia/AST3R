@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 // src/app/api/send-email/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { sendOrderConfirmation, sendAdminOrderAlert, sendShippingUpdate } from '@/lib/email';
