@@ -6,7 +6,7 @@ import { formatPrice } from '@/lib/utils';
 import Header from '@/components/Header';
 import HomeFilter from '@/components/HomeFilter';
 
-export const revalidate = 60;
+export const revalidate = 0; // Always fresh - ensures new images/prices show immediately
 
 export default async function HomePage() {
   // Fetch products without joins to avoid duplicate rows from size_inventory
