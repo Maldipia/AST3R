@@ -72,7 +72,8 @@ function ImageCell({ p, onDone }: { p: Product; onDone: (id: string, url: string
       const { error } = await supabase.storage.from('product-images').upload(fn, file, { upsert: true });
       if (error) throw error;
       const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fn);
-      await supabase.from('products').update({ image_url: publicUrl }).eq('id', p.id);
+      const { error: updErr } = await supabase.from('products').update({ image_url: publicUrl }).eq('id', p.id).select();
+      if (updErr) throw new Error('DB update failed: ' + updErr.message);
       toast.dismiss(t); toast.success('Image saved');
       tx(() => onDone(p.id, publicUrl));
     } catch (e: any) { toast.dismiss(t); toast.error(e.message); }
@@ -209,7 +210,8 @@ function EditModal({ p, onClose, onSaved }: { p: Product; onClose: () => void; o
       if (error) throw error;
       const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fn);
       setImgPrev(publicUrl);
-      await supabase.from('products').update({ image_url: publicUrl }).eq('id', p.id);
+      const { error: updErr2 } = await supabase.from('products').update({ image_url: publicUrl }).eq('id', p.id).select();
+      if (updErr2) throw new Error('DB update failed: ' + updErr2.message);
       toast.dismiss(t); toast.success('Image saved');
     } catch (e: any) { toast.dismiss(t); toast.error(e.message); }
     finally { setImgUp(false); }

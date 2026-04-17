@@ -86,7 +86,7 @@ export default function HomeFilter({
               <div className="relative aspect-[3/4] bg-brand-cream overflow-hidden mb-4">
                 {product.image_url ? (
                   <Image src={product.image_url} alt={product.name}
-                    fill className="object-cover transition-transform duration-700 group-hover:scale-105"
+                    fill className="object-cover object-top transition-transform duration-700 group-hover:scale-105"
                     sizes="(max-width: 640px) 50vw, 33vw" />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center">
