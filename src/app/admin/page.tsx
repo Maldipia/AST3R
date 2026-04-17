@@ -72,9 +72,14 @@ function ImageCell({ p, onDone }: { p: Product; onDone: (id: string, url: string
       const { error } = await supabase.storage.from('product-images').upload(fn, file, { upsert: true });
       if (error) throw error;
       const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fn);
-      const { error: updErr } = await supabase.from('products').update({ image_url: publicUrl }).eq('id', p.id).select();
-      if (updErr) throw new Error('DB update failed: ' + updErr.message);
-      toast.dismiss(t); toast.success('Image saved');
+      const updRes = await fetch('/api/admin/update-product', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id, image_url: publicUrl }),
+      });
+      const updJson = await updRes.json();
+      if (!updRes.ok) throw new Error(updJson.error || 'Image save failed');
+      toast.dismiss(t); toast.success('Image saved ✅');
       tx(() => onDone(p.id, publicUrl));
     } catch (e: any) { toast.dismiss(t); toast.error(e.message); }
     finally { setBusy(false); if (ref.current) ref.current.value = ''; }
@@ -210,9 +215,14 @@ function EditModal({ p, onClose, onSaved }: { p: Product; onClose: () => void; o
       if (error) throw error;
       const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fn);
       setImgPrev(publicUrl);
-      const { error: updErr2 } = await supabase.from('products').update({ image_url: publicUrl }).eq('id', p.id).select();
-      if (updErr2) throw new Error('DB update failed: ' + updErr2.message);
-      toast.dismiss(t); toast.success('Image saved');
+      const updRes2 = await fetch('/api/admin/update-product', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id, image_url: publicUrl }),
+      });
+      const updJson2 = await updRes2.json();
+      if (!updRes2.ok) throw new Error(updJson2.error || 'Image save failed');
+      toast.dismiss(t); toast.success('Image saved ✅');
     } catch (e: any) { toast.dismiss(t); toast.error(e.message); }
     finally { setImgUp(false); }
   };
@@ -935,7 +945,7 @@ export default function AdminPage() {
     let count = 0;
     for (const p of targets) {
       const salePrice = Math.round(p.price * (1 - pct / 100));
-      const { error } = await supabase.from('products').update({ compare_price: salePrice }).eq('sku', p.sku).select();
+      const { error } = await fetch('/api/admin/update-product', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: p.sku, compare_price: salePrice }) });
       if (!error) count++;
     }
     toast.success(`Applied ${pct}% off to ${count} products`);
@@ -950,7 +960,7 @@ export default function AdminPage() {
     setBulkBusy(true);
     const targets = products.filter(p => bulkCat === 'All' || p.category === bulkCat);
     for (const p of targets) {
-      await supabase.from('products').update({ compare_price: null }).eq('sku', p.sku).select();
+      await fetch('/api/admin/update-product', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sku: p.sku, compare_price: null }) });
     }
     toast.success(`Cleared sale prices for ${targets.length} products`);
     setBulkBusy(false);
