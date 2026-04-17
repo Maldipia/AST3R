@@ -4,8 +4,14 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder';
 
-// ── Public client (browser) ──────────────────────────────────
-export const supabase = createClient(supabaseUrl, supabaseAnon);
+// ── Public client (browser + server) ────────────────────────
+// cache: 'no-store' prevents Next.js 14 fetch cache from serving stale data
+export const supabase = createClient(supabaseUrl, supabaseAnon, {
+  global: {
+    fetch: (url: RequestInfo | URL, init?: RequestInit) =>
+      fetch(url, { ...init, cache: 'no-store' }),
+  },
+});
 
 // ── Server client with service role (API routes only) ────────
 export function createServiceClient() {
