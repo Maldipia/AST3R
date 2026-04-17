@@ -92,10 +92,7 @@ export default async function ProductPage(
           <div className="grid grid-cols-1 lg:grid-cols-2 min-h-[calc(100vh-4rem)]">
 
             {/* Left: Image */}
-            <div
-              className="relative bg-brand-cream overflow-hidden"
-              style={{ minHeight: '60vw', maxHeight: '90vh' }}
-            >
+            <div className="relative bg-brand-cream overflow-hidden aspect-[3/4] lg:aspect-auto lg:min-h-screen">
               {product.image_url ? (
                 <Image
                   src={product.image_url}
