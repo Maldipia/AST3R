@@ -1,142 +1,165 @@
-// src/app/page.tsx  — SERVER COMPONENT (prices in HTML, no JS needed)
-import Image  from 'next/image';
-import Link   from 'next/link';
-import { supabase } from '@/lib/supabase';
-import { formatPrice } from '@/lib/utils';
-import Header from '@/components/Header';
-import HomeFilter from '@/components/HomeFilter';
+// src/app/page.tsx — SERVER COMPONENT
+import Image      from 'next/image';
+import Link       from 'next/link';
+import { supabase }    from '@/lib/supabase';
+import Header          from '@/components/Header';
+import HomeFilter      from '@/components/HomeFilter';
 
-export const revalidate = 0; // Always fresh - ensures new images/prices show immediately
+export const revalidate = 0;
 
 export default async function HomePage() {
-  // Fetch products without joins to avoid duplicate rows from size_inventory
   const { data: allProducts } = await supabase
     .from('products')
     .select('id, sku, name, price, compare_price, image_url, category, status')
     .eq('status', 'active')
     .order('created_at', { ascending: false });
 
-  // Fetch inventory separately to get stock counts
   const { data: inventoryData } = await supabase
-    .from('inventory')
-    .select('sku, quantity');
+    .from('inventory').select('sku, quantity');
   const invMap: Record<string, number> = {};
-  (inventoryData || []).forEach(i => { invMap[i.sku] = i.quantity; });
+  (inventoryData || []).forEach((i: any) => { invMap[i.sku] = i.quantity; });
 
-  // Deduplicate by SKU
   const seen = new Set<string>();
-  const products = (allProducts || []).filter(p => {
+  const products = (allProducts || []).filter((p: any) => {
     if (seen.has(p.sku)) return false;
-    seen.add(p.sku);
-    return true;
+    seen.add(p.sku); return true;
   });
 
-  const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
+  const categories = ['All', ...Array.from(new Set(products.map((p: any) => p.category)))];
+  const heroProduct = products.find((p: any) => p.image_url) || products[0];
 
   return (
     <>
       <Header />
-      <main className="pt-16">
+      <main>
 
-        {/* ── Hero ── */}
-        <section className="relative h-screen bg-brand-black overflow-hidden flex items-end">
-          {products[0]?.image_url && (
-            <Image src={products[0].image_url} alt="AST3R Fashion Hero"
-              fill className="object-cover opacity-60" priority sizes="100vw" />
+        {/* ── HERO ─────────────────────────────────────────────── */}
+        <section className="relative h-screen bg-brand-black overflow-hidden">
+          {heroProduct?.image_url && (
+            <Image
+              src={heroProduct.image_url}
+              alt="AST3R Fashion"
+              fill
+              className="object-cover object-top opacity-50"
+              priority
+              sizes="100vw"
+            />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-brand-black via-brand-black/20 to-transparent" />
-          <div className="relative z-10 px-6 pb-20 max-w-7xl w-full mx-auto">
-            <span className="accent-line mb-6" />
-            <h1 className="display-xl text-brand-white mb-4">
-              Elevated<br />
-              <em className="not-italic text-brand-orange">Essentials.</em>
-            </h1>
-            <p className="text-brand-gray text-sm max-w-md mb-8 leading-relaxed">
-              Bangkok-inspired fashion rooted in quality and comfort.
-              Designed for the modern woman who moves through the world with intention.
-            </p>
-            <div className="flex flex-wrap gap-4">
-              <a href="#collections" className="btn-primary">Shop Collection</a>
-              <a href="https://instagram.com/ast3r.ph" target="_blank" rel="noopener noreferrer"
-                className="btn-outline border-white text-white hover:bg-white hover:text-brand-black">
-                @ast3r.ph
-              </a>
+          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/70" />
+          <div className="absolute bottom-0 left-0 right-0 px-6 sm:px-12 pb-16">
+            <div className="max-w-7xl mx-auto">
+              <div className="max-w-xl">
+                <p className="text-brand-orange text-xs tracking-[0.3em] uppercase mb-4 font-medium">New Collection 2026</p>
+                <h1 className="display-xl text-white mb-6 leading-[1.02]">
+                  Elevated<br/>Essentials.
+                </h1>
+                <p className="text-white/60 text-sm leading-relaxed mb-8 max-w-sm">
+                  Bangkok-inspired fashion built for the modern woman. Quality pieces designed to last.
+                </p>
+                <div className="flex items-center gap-6">
+                  <a href="#collections"
+                    className="bg-white text-brand-black px-8 py-3.5 text-xs tracking-[0.2em] uppercase font-medium hover:bg-brand-orange hover:text-white transition-all duration-300">
+                    Shop Now
+                  </a>
+                  <a href="https://instagram.com/ast3r.ph" target="_blank" rel="noopener noreferrer"
+                    className="text-white/70 text-xs tracking-[0.2em] uppercase border-b border-white/30 hover:text-white hover:border-white transition-all pb-0.5">
+                    @ast3r.ph
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce">
-            <div className="w-px h-10 bg-brand-gray/50" />
-            <span className="text-brand-gray text-xs tracking-widest uppercase">Scroll</span>
+          <div className="absolute bottom-8 right-8 sm:right-12 flex flex-col items-center gap-3">
+            <div className="w-px h-12 bg-white/30" />
+            <span className="text-white/40 text-[9px] tracking-[0.3em] uppercase" style={{writingMode:'vertical-rl'}}>Scroll</span>
           </div>
         </section>
 
-        {/* ── Collections ── */}
-        <section id="collections" className="py-20 px-4">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-end justify-between mb-10">
-              <div>
-                <span className="accent-line mb-3" />
-                <h2 className="display-lg text-brand-black">Collection</h2>
+        {/* ── MARQUEE ───────────────────────────────────────────── */}
+        <div className="bg-brand-black border-t border-white/10 py-3 overflow-hidden">
+          <div className="flex animate-marquee whitespace-nowrap">
+            {Array(6).fill(['Free Shipping on Orders ₱3,000+', '·', 'New Arrivals Weekly', '·', 'Ships Worldwide', '·', 'Quality Elevated Essentials', '·']).flat().map((t, i) => (
+              <span key={i} className="text-white/50 text-[10px] tracking-[0.3em] uppercase mx-8 font-medium">{t}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* ── COLLECTION ────────────────────────────────────────── */}
+        <section id="collections" className="bg-[#FAFAF8] pt-16 pb-24">
+          <div className="max-w-7xl mx-auto px-5 sm:px-8">
+            {/* Header row */}
+            <div className="flex items-baseline justify-between border-b border-[#E8E6E2] pb-6 mb-10">
+              <div className="flex items-baseline gap-6">
+                <h2 className="font-serif text-2xl sm:text-3xl text-brand-black tracking-tight">The Collection</h2>
+                <span className="text-brand-gray text-xs tracking-widest hidden sm:block">{products.length} pieces</span>
               </div>
-              <p className="text-brand-gray text-sm">{products.length} pieces</p>
+              <span className="text-brand-gray text-[10px] tracking-[0.3em] uppercase">AST3R · 2026</span>
             </div>
 
-            {/* Client filter component handles search + category tabs */}
             <HomeFilter products={products} categories={categories} invMap={invMap} />
           </div>
         </section>
 
-        {/* ── Brand ── */}
-        <section id="about" className="bg-brand-black py-24 px-4">
-          <div className="max-w-4xl mx-auto text-center">
-            <span className="accent-line mx-auto mb-6" />
-            <h2 className="display-lg text-brand-white mb-6">
-              Elevated Essentials for the Modern Woman
-            </h2>
-            <p className="text-brand-gray text-sm leading-relaxed max-w-2xl mx-auto mb-10">
-              AST3R is a fashion brand based in Tagaytay City, Philippines.
-              We create trendy, high-quality pieces built to last — designed with comfort and elegance in mind.
-              Ships worldwide.
-            </p>
-            <div className="grid grid-cols-3 gap-8 max-w-lg mx-auto">
+        {/* ── BRAND ─────────────────────────────────────────────── */}
+        <section className="bg-brand-black py-20 px-5 sm:px-8">
+          <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            <div>
+              <p className="text-brand-orange text-[10px] tracking-[0.35em] uppercase mb-5">Our Story</p>
+              <h2 className="display-lg text-white mb-5 leading-[1.1]">Designed in Tagaytay.<br/>Worn Worldwide.</h2>
+              <p className="text-white/45 text-sm leading-relaxed mb-8 max-w-md">
+                AST3R is a fashion brand from the cool highlands of Tagaytay City, Philippines.
+                Every piece is thoughtfully made — elevated basics with Bangkok-inspired aesthetics,
+                built for comfort without sacrificing style.
+              </p>
+              <a href="#collections"
+                className="inline-flex items-center gap-3 text-white text-xs tracking-[0.2em] uppercase border-b border-white/20 hover:border-brand-orange hover:text-brand-orange transition-all pb-1">
+                Shop the Collection <span>→</span>
+              </a>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
               {[
-                { value: products.length + '+', label: 'Products' },
-                { value: 'WW', label: 'Ships Worldwide' },
-                { value: 'PH', label: 'Based in Tagaytay' },
-              ].map(({ value, label }) => (
-                <div key={label} className="text-center">
-                  <p className="font-serif text-3xl text-brand-white mb-1">{value}</p>
-                  <p className="text-brand-gray text-xs tracking-widest uppercase">{label}</p>
+                { num: products.length + '+', label: 'Pieces' },
+                { num: 'PH', label: 'Tagaytay' },
+                { num: 'WW', label: 'Worldwide' },
+              ].map(({ num, label }) => (
+                <div key={label} className="border border-white/10 p-6 text-center">
+                  <p className="font-serif text-3xl text-white mb-2">{num}</p>
+                  <p className="text-white/35 text-[9px] tracking-[0.3em] uppercase">{label}</p>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* Footer */}
-        <footer className="bg-brand-cream border-t border-brand-light py-12 px-4">
-          <div className="max-w-7xl mx-auto">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-10">
-              <div>
-                <p className="font-serif text-xl tracking-widest text-brand-black mb-3">AST3R</p>
-                <p className="text-brand-gray text-xs leading-relaxed">Elevated essentials.<br />Tagaytay City, Philippines.</p>
+        {/* ── FOOTER ────────────────────────────────────────────── */}
+        <footer className="bg-[#F2F0EC] border-t border-[#D4D4CF]">
+          <div className="max-w-7xl mx-auto px-5 sm:px-8 py-14">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-10 mb-10">
+              <div className="col-span-2 sm:col-span-1">
+                <p className="font-serif text-2xl tracking-[0.15em] text-brand-black mb-3">AST3R</p>
+                <p className="text-brand-gray text-xs leading-relaxed">Elevated essentials.<br/>Tagaytay City, Philippines.</p>
               </div>
               {[
-                { title: 'Shop', links: [{ label: 'Collections', href: '#collections' }, { label: 'New Arrivals', href: '#collections' }] },
-                { title: 'Help', links: [{ label: 'Track Order', href: '/track' }, { label: 'Returns', href: '/returns' }, { label: 'Visit Store', href: '/store' }] },
-                { title: 'Contact', links: [{ label: 'inquiry@ast3r.store', href: 'mailto:inquiry@ast3r.store' }, { label: '0966 960 6060', href: 'tel:09669606060' }, { label: '@ast3r.ph', href: 'https://instagram.com/ast3r.ph' }] },
+                { title: 'Shop', links: [['All Collections','#collections'],['New Arrivals','#collections'],['Sale','#collections']] },
+                { title: 'Help', links: [['Track Order','/track'],['Returns','/returns'],['Visit Store','/store']] },
+                { title: 'Contact', links: [['inquiry@ast3r.store','mailto:inquiry@ast3r.store'],['0966 960 6060','tel:09669606060'],['@ast3r.ph','https://instagram.com/ast3r.ph']] },
               ].map(({ title, links }) => (
                 <div key={title}>
-                  <p className="text-xs font-medium tracking-widest uppercase text-brand-black mb-3">{title}</p>
-                  <div className="space-y-2">
-                    {links.map(({ label, href }) => (
+                  <p className="text-[10px] font-medium tracking-[0.3em] uppercase text-brand-black mb-4">{title}</p>
+                  <div className="space-y-2.5">
+                    {links.map(([label, href]) => (
                       <a key={label} href={href} className="block text-xs text-brand-gray hover:text-brand-black transition-colors">{label}</a>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="border-t border-brand-light pt-6 text-center">
-              <p className="text-xs text-brand-gray">© {new Date().getFullYear()} AST3R Fashion. All rights reserved.</p>
+            <div className="border-t border-[#D4D4CF] pt-5 flex flex-col sm:flex-row items-center justify-between gap-2">
+              <p className="text-[11px] text-brand-gray">© {new Date().getFullYear()} AST3R Fashion. All rights reserved.</p>
+              <div className="flex gap-5">
+                <a href="#" className="text-[11px] text-brand-gray hover:text-brand-black transition-colors">Privacy</a>
+                <a href="#" className="text-[11px] text-brand-gray hover:text-brand-black transition-colors">Terms</a>
+              </div>
             </div>
           </div>
         </footer>
