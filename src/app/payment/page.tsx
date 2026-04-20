@@ -165,6 +165,18 @@ export default function PaymentPage() {
     </div>
   );
 
+  // Guard: wait for session data to load before rendering
+  if (!orderForm || !cart) {
+    return (
+      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-6 h-6 border-2 border-brand-black border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-xs text-brand-gray tracking-widest uppercase">Loading order details...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
     <div className="min-h-screen bg-gray-50">
@@ -363,7 +375,7 @@ export default function PaymentPage() {
                   <ul className="text-sm text-purple-700 space-y-1.5">
                     <li>✅ Visit our store to pay and pick up</li>
                     <li>✅ Bring exact amount: <strong>{formatPrice(total)}</strong></li>
-                    <li>📍 SVC Amadeo, Cavite, Cavite</li>
+                    <li>📍 SVC Amadeo, Cavite</li>
                     <li>🕐 Monday - Saturday, 9AM - 6PM</li>
                   </ul>
                 </div>
