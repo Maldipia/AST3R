@@ -37,9 +37,9 @@ export const REGIONS = [
     days:     '7–21 business days',
     couriers: ['LBC International', 'DHL', 'FedEx'],
   },
-] as const;
+];
 
-export type RegionId = typeof REGIONS[number]['id'];
+export type RegionId = 'metro_manila' | 'luzon' | 'visayas' | 'mindanao' | 'international';
 
 export function getRegion(id: RegionId) {
   return REGIONS.find(r => r.id === id);
