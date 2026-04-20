@@ -24,7 +24,7 @@ export default function StorePage() {
                   <span className="text-xl flex-shrink-0">📍</span>
                   <div>
                     <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-1">Address</p>
-                    <p className="text-sm text-brand-black">Tagaytay City, Cavite 4120<br />Philippines</p>
+                    <p className="text-sm text-brand-black">Amadeo, Cavite<br />Philippines</p>
                   </div>
                 </div>
 
@@ -43,7 +43,7 @@ export default function StorePage() {
                   <span className="text-xl flex-shrink-0">📞</span>
                   <div>
                     <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-1">Contact</p>
-                    <a href="tel:09669606060" className="text-sm text-brand-black hover:text-brand-orange transition-colors block">0966 960 6060</a>
+                    <a href="tel:09674000040" className="text-sm text-brand-black hover:text-brand-orange transition-colors block">0967-4000-040</a>
                     <a href="mailto:inquiry@ast3r.store" className="text-sm text-brand-black hover:text-brand-orange transition-colors block">inquiry@ast3r.store</a>
                   </div>
                 </div>
@@ -53,7 +53,7 @@ export default function StorePage() {
                   <div>
                     <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-1">Getting Here</p>
                     <p className="text-sm text-brand-gray leading-relaxed">
-                      Located in Tagaytay City, approximately 50km south of Manila. 
+                      Located in Amadeo, Cavite, Philippines. 
                       Accessible via STAR Tollway or Aguinaldo Highway.
                     </p>
                   </div>

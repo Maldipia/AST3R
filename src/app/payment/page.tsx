@@ -363,7 +363,7 @@ export default function PaymentPage() {
                   <ul className="text-sm text-purple-700 space-y-1.5">
                     <li>✅ Visit our store to pay and pick up</li>
                     <li>✅ Bring exact amount: <strong>{formatPrice(total)}</strong></li>
-                    <li>📍 AST3R Boutique, Tagaytay City, Cavite</li>
+                    <li>📍 SVC Amadeo, Cavite, Cavite</li>
                     <li>🕐 Monday - Saturday, 9AM - 6PM</li>
                   </ul>
                 </div>
@@ -548,7 +548,7 @@ export default function PaymentPage() {
 
             <section>
               <h3 className="text-xs font-semibold tracking-[0.2em] uppercase text-gray-900 mb-2">3. Inspect Your Order Upon Arrival</h3>
-              <p>Customers are strongly advised to <strong className="text-gray-900 font-medium">inspect their order in the presence of the courier</strong> before signing or acknowledging receipt. If you notice visible damage to the packaging or contents at the time of delivery, you may refuse the parcel and contact us immediately at <strong className="text-gray-900 font-medium">inquiry@ast3r.store</strong> or <strong className="text-gray-900 font-medium">0966 960 6060</strong>.</p>
+              <p>Customers are strongly advised to <strong className="text-gray-900 font-medium">inspect their order in the presence of the courier</strong> before signing or acknowledging receipt. If you notice visible damage to the packaging or contents at the time of delivery, you may refuse the parcel and contact us immediately at <strong className="text-gray-900 font-medium">inquiry@ast3r.store</strong> or <strong className="text-gray-900 font-medium">0967-4000-040</strong>.</p>
               <p className="mt-2">Claims for damaged or missing items will not be entertained if the parcel was accepted without notation at the point of delivery.</p>
             </section>
 
@@ -580,9 +580,9 @@ export default function PaymentPage() {
               <p>For any concerns regarding your order, please reach out to our team:</p>
               <div className="mt-2 space-y-1 text-xs">
                 <p><span className="text-gray-400">Email:</span> <strong className="text-gray-900">inquiry@ast3r.store</strong></p>
-                <p><span className="text-gray-400">Phone / Viber:</span> <strong className="text-gray-900">0966 960 6060</strong></p>
+                <p><span className="text-gray-400">Phone / Viber:</span> <strong className="text-gray-900">0967-4000-040</strong></p>
                 <p><span className="text-gray-400">Instagram:</span> <strong className="text-gray-900">@ast3r.ph</strong></p>
-                <p><span className="text-gray-400">Store:</span> <strong className="text-gray-900">AST3R Boutique, Tagaytay City</strong></p>
+                <p><span className="text-gray-400">Store:</span> <strong className="text-gray-900">SVC Amadeo, Cavite</strong></p>
               </div>
             </section>
 

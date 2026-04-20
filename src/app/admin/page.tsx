@@ -1804,7 +1804,7 @@ export default function AdminPage() {
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-gray-100"><h3 className="font-semibold text-gray-900 text-sm">Store Info</h3></div>
                 <div className="divide-y divide-gray-50">
-                  {[{ label:'Store URL', value:'ast3r.store' },{ label:'Admin Email', value:'admin@ast3r.store' },{ label:'Contact', value:'inquiry@ast3r.store' },{ label:'Phone', value:'0966 960 6060' },{ label:'Instagram', value:'@ast3r.ph' },{ label:'Location', value:'Tagaytay City, PH' }].map(({ label, value }) => (
+                  {[{ label:'Store URL', value:'ast3r.store' },{ label:'Admin Email', value:'admin@ast3r.store' },{ label:'Contact', value:'inquiry@ast3r.store' },{ label:'Phone', value:'0967-4000-040' },{ label:'Instagram', value:'@ast3r.ph' },{ label:'Location', value:'Amadeo, Cavite, PH' }].map(({ label, value }) => (
                     <div key={label} className="flex justify-between items-center px-5 py-3">
                       <span className="text-xs text-gray-500 uppercase tracking-wider">{label}</span>
                       <span className="text-xs font-semibold text-gray-700">{value}</span>

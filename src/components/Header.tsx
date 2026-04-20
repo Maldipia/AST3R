@@ -98,7 +98,7 @@ export default function Header() {
           </nav>
           <div className="absolute bottom-8 left-6 right-6">
             <p className="text-[11px] text-brand-gray">inquiry@ast3r.store</p>
-            <p className="text-[11px] text-brand-gray">0966 960 6060</p>
+            <p className="text-[11px] text-brand-gray">0967-4000-040</p>
           </div>
         </div>
       </div>

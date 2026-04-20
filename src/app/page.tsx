@@ -142,7 +142,7 @@ export default async function HomePage() {
               {[
                 { title: 'Shop', links: [['All Collections','#collections'],['New Arrivals','#collections'],['Sale','#collections']] },
                 { title: 'Help', links: [['Track Order','/track'],['Returns','/returns'],['Visit Store','/store']] },
-                { title: 'Contact', links: [['inquiry@ast3r.store','mailto:inquiry@ast3r.store'],['0966 960 6060','tel:09669606060'],['@ast3r.ph','https://instagram.com/ast3r.ph']] },
+                { title: 'Contact', links: [['inquiry@ast3r.store','mailto:inquiry@ast3r.store'],['0967-4000-040','tel:09674000040'],['@ast3r.ph','https://instagram.com/ast3r.ph']] },
               ].map(({ title, links }) => (
                 <div key={title}>
                   <p className="text-[10px] font-medium tracking-[0.3em] uppercase text-brand-black mb-4">{title}</p>

@@ -147,7 +147,7 @@ export default function ReturnsPage() {
             <p className="text-xs text-brand-gray">Questions? Contact us directly:</p>
             <a href="mailto:inquiry@ast3r.store" className="text-xs text-brand-orange underline">inquiry@ast3r.store</a>
             <span className="text-brand-light mx-2">|</span>
-            <a href="tel:09669606060" className="text-xs text-brand-orange underline">0966 960 6060</a>
+            <a href="tel:09674000040" className="text-xs text-brand-orange underline">0967-4000-040</a>
           </div>
         </div>
       </main>

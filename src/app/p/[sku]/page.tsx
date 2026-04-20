@@ -219,7 +219,7 @@ export default async function ProductPage(
                 <div className="text-xs text-brand-gray">🚚 Nationwide delivery via LBC / J&T</div>
                 <div className="text-xs text-brand-gray">📦 Worldwide shipping available</div>
                 <div className="text-xs text-brand-gray">💬 Questions? inquiry@ast3r.store</div>
-                <div className="text-xs text-brand-gray">📍 Walk-in: AST3R Boutique, Tagaytay City</div>
+                <div className="text-xs text-brand-gray">📍 Walk-in: SVC Amadeo, Cavite</div>
               </div>
 
               {/* Share */}

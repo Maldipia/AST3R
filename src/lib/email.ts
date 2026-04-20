@@ -55,8 +55,8 @@ function baseTemplate(content: string) {
   </div>
   <div class="body">${content}</div>
   <div class="footer">
-    <p>📧 inquiry@ast3r.store &nbsp;|&nbsp; 📞 0966 960 6060</p>
-    <p>📍 Tagaytay City, Philippines &nbsp;|&nbsp; 📱 @ast3r.ph</p>
+    <p>📧 inquiry@ast3r.store &nbsp;|&nbsp; 📞 0967-4000-040</p>
+    <p>📍 Amadeo, Cavite, Philippines &nbsp;|&nbsp; 📱 @ast3r.ph</p>
     <p style="margin-top:12px;">© ${new Date().getFullYear()} AST3R Fashion. All rights reserved.</p>
   </div>
 </div>
