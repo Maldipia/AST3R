@@ -169,36 +169,6 @@ export default async function ProductPage(
                 <span className={'text-sm font-medium ' + stockColor}>{stockLabel}</span>
               </div>
 
-              {/* Sizes */}
-              {hasSizes && (
-                <div className="mb-8">
-                  <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-3">
-                    Select Size
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {sizeInventory.map(function(si: any) {
-                      return (
-                        <div
-                          key={si.size}
-                          className={si.quantity <= 0
-                            ? 'flex flex-col items-center px-4 py-2 border text-sm font-medium min-w-[56px] border-brand-light text-brand-light cursor-not-allowed line-through'
-                            : 'flex flex-col items-center px-4 py-2 border text-sm font-medium min-w-[56px] border-brand-black text-brand-black hover:bg-brand-black hover:text-white cursor-pointer transition-colors'
-                          }
-                        >
-                          <span>{si.size}</span>
-                          <span className={'text-xs mt-0.5 font-normal ' + (
-                            si.quantity <= 0 ? 'text-brand-light' :
-                            si.quantity <= 3 ? 'text-orange-500' : 'text-brand-gray'
-                          )}>
-                            {si.quantity <= 0 ? 'sold out' : si.quantity + ' left'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
               <div className="divider" />
 
               <p className="text-brand-gray text-sm leading-relaxed mb-10 max-w-md">
@@ -212,6 +182,7 @@ export default async function ProductPage(
                 salePrice={comparePrice}
                 imageUrl={product.image_url}
                 inStock={inStock}
+                sizes={sizeInventory}
               />
 
               {/* Info */}
