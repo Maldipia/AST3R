@@ -37,6 +37,16 @@ export default function CartDrawer() {
 
   const checkout = () => {
     if (cart.length === 0) { toast.error('Your cart is empty'); return; }
+    const missingSizes = cart.filter(i => !i.size);
+    if (missingSizes.length > 0) {
+      toast.error(
+        missingSizes.length === 1
+          ? `Please select a size for "${missingSizes[0].name}" before checking out.`
+          : `${missingSizes.length} items are missing a size. Remove them and re-add with a size selected.`,
+        { duration: 4000 }
+      );
+      return;
+    }
     setOpen(false);
     router.push('/checkout');
   };
@@ -189,14 +199,38 @@ export default function CartDrawer() {
                   <span className="font-serif text-lg text-brand-black">{formatPrice(total)}</span>
                 </div>
                 <p className="text-[11px] text-brand-gray">Shipping calculated at checkout</p>
-                <button onClick={checkout}
-                  className="w-full bg-brand-black text-white py-3.5 text-xs tracking-[0.2em] uppercase font-medium hover:bg-brand-orange transition-colors flex items-center justify-center gap-2">
-                  Checkout
-                  <span className="font-serif text-sm normal-case tracking-normal">{formatPrice(total)}</span>
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3"/>
-                  </svg>
-                </button>
+                {(() => {
+                  const missingSizes = cart.filter(i => !i.size);
+                  const hasIssue = missingSizes.length > 0;
+                  return (
+                    <>
+                      {hasIssue && (
+                        <div className="flex items-start gap-2 bg-[#FFF8F5] border border-brand-orange/30 px-3 py-2.5 rounded-sm">
+                          <span className="text-brand-orange text-xs mt-0.5 flex-shrink-0">!</span>
+                          <p className="text-xs text-brand-orange leading-relaxed">
+                            {missingSizes.length === 1
+                              ? `"${missingSizes[0].name}" has no size selected. Remove it and re-add with a size.`
+                              : `${missingSizes.length} items are missing sizes — remove and re-add them.`}
+                          </p>
+                        </div>
+                      )}
+                      <button onClick={checkout}
+                        className={`w-full py-3.5 text-xs tracking-[0.2em] uppercase font-medium transition-colors flex items-center justify-center gap-2 ${
+                          hasIssue
+                            ? 'bg-brand-gray/30 text-brand-gray cursor-not-allowed'
+                            : 'bg-brand-black text-white hover:bg-brand-orange'
+                        }`}>
+                        {hasIssue ? 'Select Sizes to Continue' : 'Checkout'}
+                        {!hasIssue && <span className="font-serif text-sm normal-case tracking-normal">{formatPrice(total)}</span>}
+                        {!hasIssue && (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+                          </svg>
+                        )}
+                      </button>
+                    </>
+                  );
+                })()}
                 <button onClick={() => setOpen(false)}
                   className="w-full border border-[#D4D4CF] text-brand-gray py-2.5 text-xs tracking-[0.2em] uppercase font-medium hover:text-brand-black hover:border-brand-black transition-colors">
                   Continue Shopping
