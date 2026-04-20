@@ -69,9 +69,9 @@ export async function POST(req: NextRequest) {
     // 4. Insert payment record
     const { error: payErr } = await supabase.from('payments').insert({
       order_id:          order.id,
-      payment_method:    method?.label || 'Unknown',
+      payment_method:    method?.type || 'unknown',
       amount:            total,
-      status:            ['cod','cop','later'].includes(method?.type) ? 'pending' : 'pending',
+      status:            'pending',
       payment_proof_url: proofUrl || null,
     });
     if (payErr) throw new Error(payErr.message);
