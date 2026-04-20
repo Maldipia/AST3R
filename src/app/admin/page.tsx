@@ -43,15 +43,42 @@ const PAGE  = 50;
 
 // ── Status Badge ───────────────────────────────────────────────
 const STATUS_STYLES: Record<string, string> = {
-  pending:  'bg-amber-50 text-amber-700 border border-amber-200',
-  paid:     'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  shipped:  'bg-blue-50 text-blue-700 border border-blue-200',
-  cancelled:'bg-red-50 text-red-700 border border-red-200',
-  verified: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  rejected: 'bg-red-50 text-red-700 border border-red-200',
-  active:   'bg-gray-900 text-white',
-  inactive: 'bg-gray-100 text-gray-500',
+  // Order status
+  pending:    'bg-amber-50 text-amber-700 border border-amber-300 font-semibold',
+  paid:       'bg-emerald-50 text-emerald-700 border border-emerald-300 font-semibold',
+  processing: 'bg-blue-50 text-blue-700 border border-blue-300 font-semibold',
+  shipped:    'bg-violet-50 text-violet-700 border border-violet-300 font-semibold',
+  delivered:  'bg-green-100 text-green-800 border border-green-400 font-semibold',
+  cancelled:  'bg-red-50 text-red-600 border border-red-300 font-semibold',
+  // Payment status
+  verified:   'bg-emerald-100 text-emerald-800 border border-emerald-400 font-semibold',
+  rejected:   'bg-red-100 text-red-700 border border-red-300 font-semibold',
+  // Product status
+  active:     'bg-gray-900 text-white font-semibold',
+  inactive:   'bg-gray-100 text-gray-500',
 };
+
+const PAYMENT_METHOD_STYLES: Record<string, string> = {
+  gcash:  'bg-blue-600 text-white font-bold',
+  maya:   'bg-green-600 text-white font-bold',
+  bdo:    'bg-red-700 text-white font-bold',
+  bpi:    'bg-red-600 text-white font-bold',
+  cod:    'bg-orange-500 text-white font-bold',
+  cop:    'bg-orange-600 text-white font-bold',
+  later:  'bg-purple-600 text-white font-bold',
+  gcash_qr: 'bg-blue-600 text-white font-bold',
+  unknown:'bg-gray-400 text-white font-bold',
+};
+function PaymentBadge({ method }: { method: string }) {
+  const key = (method || 'unknown').toLowerCase().replace(/\s+/g,'_');
+  const style = PAYMENT_METHOD_STYLES[key] || PAYMENT_METHOD_STYLES.unknown;
+  const labels: Record<string,string> = {
+    gcash:'GCash', maya:'Maya', bdo:'BDO', bpi:'BPI',
+    cod:'COD', cop:'COP', later:'Pay Later', unknown:'Unknown',
+  };
+  const label = labels[key] || method.toUpperCase();
+  return <span className={`inline-flex items-center px-2.5 py-0.5 text-[11px] rounded-sm tracking-wide ${style}`}>{label}</span>;
+}
 function Badge({ s }: { s: string }) {
   return <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-sm ${STATUS_STYLES[s] || STATUS_STYLES.pending}`}>{s}</span>;
 }
@@ -1536,10 +1563,11 @@ export default function AdminPage() {
                   <div key={order.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                     <div className="flex flex-wrap justify-between gap-3 px-5 py-4 border-b border-gray-100">
                       <div className="flex items-center gap-3 flex-wrap">
-                        <p className="font-mono font-bold text-gray-900">{order.order_code}</p>
+                        <span className="font-mono font-bold text-gray-900 text-sm tracking-wide">{order.order_code}</span>
                         <Badge s={order.status} />
-                        {pay && <Badge s={pay.status} />}
-                        {pay?.payment_method && <span className="text-xs text-gray-400">{pay.payment_method}</span>}
+                        {pay && pay.status !== order.status && <Badge s={pay.status} />}
+                        {pay?.payment_method && <PaymentBadge method={pay.payment_method} />}
+                        {order.payment_method_type && !pay?.payment_method && <PaymentBadge method={order.payment_method_type} />}
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-gray-900">{formatPrice(order.total_amount)}</p>
@@ -1554,7 +1582,7 @@ export default function AdminPage() {
                       </div>
                       <div className="sm:col-span-1">
                         <p className="text-xs text-gray-400 mb-1">Address</p>
-                        <p className="text-xs text-gray-600 leading-relaxed">{order.address_full}</p>
+                        <p className="text-xs text-gray-600 leading-relaxed line-clamp-3">{order.address_full}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-400 mb-1">Shipping</p>
@@ -1576,7 +1604,10 @@ export default function AdminPage() {
                       </div>
                       {pay?.payment_proof_url && (
                         <a href={pay.payment_proof_url} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-orange-500 underline font-medium">View Proof</a>
+                          className="inline-flex items-center gap-1 text-xs bg-brand-orange text-white px-2.5 py-1 font-medium hover:bg-orange-600 transition-colors rounded-sm">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                          View Proof
+                        </a>
                       )}
                       <div className="flex gap-2 flex-wrap">
                         <select defaultValue={order.status} onChange={e=>updateOrder(order.id,e.target.value)}
