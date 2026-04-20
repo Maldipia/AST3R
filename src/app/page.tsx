@@ -137,7 +137,7 @@ export default async function HomePage() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-10 mb-10">
               <div className="col-span-2 sm:col-span-1">
                 <p className="font-serif text-2xl tracking-[0.15em] text-brand-black mb-3">AST3R</p>
-                <p className="text-brand-gray text-xs leading-relaxed">Elevated essentials.<br/>Tagaytay City, Philippines.</p>
+                <p className="text-brand-gray text-xs leading-relaxed">Elevated essentials.<br/>Amadeo, Cavite, Philippines.</p>
               </div>
               {[
                 { title: 'Shop', links: [['All Collections','#collections'],['New Arrivals','#collections'],['Sale','#collections']] },
