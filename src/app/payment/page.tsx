@@ -29,7 +29,9 @@ export default function PaymentPage() {
   const [promoErr,  setPromoErr]  = useState('');
   const [giftWrap,  setGiftWrap]  = useState(false);
   const [giftMsg,   setGiftMsg]   = useState('');
-  const [loading,   setLoading]   = useState(false);
+  const [loading,    setLoading]    = useState(false);
+  const [showPolicy,   setShowPolicy]   = useState(false);
+  const [policyAgreed, setPolicyAgreed] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
