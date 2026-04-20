@@ -100,6 +100,7 @@ export default function PaymentPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
+    if (!policyAgreed) { setShowPolicy(true); return; }
     setLoading(true);
     const loadToast = toast.loading('Placing your order...');
 
@@ -474,14 +475,36 @@ export default function PaymentPage() {
                   </div>
                 </div>
 
+                {/* Policy agreement checkbox */}
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="relative mt-0.5 flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={policyAgreed}
+                      onChange={e => setPolicyAgreed(e.target.checked)}
+                      className="sr-only"
+                    />
+                    <div className={`w-4 h-4 border transition-all duration-150 flex items-center justify-center ${policyAgreed ? 'bg-gray-900 border-gray-900' : 'border-gray-400 group-hover:border-gray-600'}`}>
+                      {policyAgreed && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>}
+                    </div>
+                  </div>
+                  <span className="text-xs text-gray-500 leading-relaxed">
+                    I have read and agree to AST3R's{' '}
+                    <button type="button" onClick={() => setShowPolicy(true)} className="text-gray-900 underline underline-offset-2 hover:text-orange-500 transition-colors font-medium">
+                      Purchase & Return Policy
+                    </button>
+                    , including the no-exchange policy on sale items.
+                  </span>
+                </label>
+
                 {/* Submit */}
-                <button type="submit" disabled={loading || !method}
-                  className="w-full bg-gray-900 text-white py-4 text-sm font-semibold rounded-xl hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                  {loading ? 'Placing Order...' : !method ? 'Select Payment Method' : isPayLater ? 'Reserve Order - Pay Later' : 'Place Order'}
+                <button type="submit" disabled={loading || !method || !policyAgreed}
+                  className="w-full bg-gray-900 text-white py-4 text-sm font-semibold tracking-widest uppercase hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                  {loading ? 'Placing Order...' : !method ? 'Select Payment Method' : !policyAgreed ? 'Agree to Policy to Continue' : isPayLater ? 'Reserve Order' : 'Place Order'}
                 </button>
 
-                <p className="text-xs text-gray-400 text-center">
-                  By placing your order, you agree to our terms and privacy policy.
+                <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+                  Your order is subject to product availability. AST3R reserves the right to cancel orders due to stock discrepancies.
                 </p>
               </div>
             </div>
@@ -489,5 +512,94 @@ export default function PaymentPage() {
         </form>
       </div>
     </div>
+
+    {/* ── POLICY MODAL ────────────────────────────────────── */}
+    {showPolicy && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowPolicy(false)}>
+        <div className="bg-white w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+          {/* Header */}
+          <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] text-gray-400 tracking-[0.25em] uppercase mb-0.5">AST3R Fashion</p>
+              <h2 className="text-base font-medium text-gray-900 tracking-tight">Purchase & Return Policy</h2>
+            </div>
+            <button onClick={() => setShowPolicy(false)} className="text-gray-400 hover:text-gray-900 transition-colors p-1">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="px-6 py-6 space-y-6 text-sm text-gray-600 leading-relaxed">
+
+            <section>
+              <h3 className="text-xs font-semibold tracking-[0.2em] uppercase text-gray-900 mb-2">1. Sale Items — No Exchange</h3>
+              <p>All items purchased at a discounted or sale price are considered <strong className="text-gray-900 font-medium">final sale</strong>. These items are not eligible for exchange or replacement of any kind, regardless of reason. Please review your size selection carefully before completing your purchase.</p>
+            </section>
+
+            <div className="w-full h-px bg-gray-100" />
+
+            <section>
+              <h3 className="text-xs font-semibold tracking-[0.2em] uppercase text-gray-900 mb-2">2. No Refund Policy</h3>
+              <p>AST3R Fashion does not offer monetary refunds once an order has been placed and payment has been confirmed. All sales are considered final upon order confirmation. In the event of an issue on our end (see Section 4), a replacement item or store credit will be issued instead of a refund.</p>
+            </section>
+
+            <div className="w-full h-px bg-gray-100" />
+
+            <section>
+              <h3 className="text-xs font-semibold tracking-[0.2em] uppercase text-gray-900 mb-2">3. Inspect Your Order Upon Arrival</h3>
+              <p>Customers are strongly advised to <strong className="text-gray-900 font-medium">inspect their order in the presence of the courier</strong> before signing or acknowledging receipt. If you notice visible damage to the packaging or contents at the time of delivery, you may refuse the parcel and contact us immediately at <strong className="text-gray-900 font-medium">inquiry@ast3r.store</strong> or <strong className="text-gray-900 font-medium">0966 960 6060</strong>.</p>
+              <p className="mt-2">Claims for damaged or missing items will not be entertained if the parcel was accepted without notation at the point of delivery.</p>
+            </section>
+
+            <div className="w-full h-px bg-gray-100" />
+
+            <section>
+              <h3 className="text-xs font-semibold tracking-[0.2em] uppercase text-gray-900 mb-2">4. 7-Day Return — Seller Accountability</h3>
+              <p>We accept returns within <strong className="text-gray-900 font-medium">7 calendar days</strong> from the date of delivery, strictly in the following circumstances where the issue is attributable to AST3R Fashion:</p>
+              <ul className="mt-2 space-y-1.5 list-none">
+                {[
+                  'Item received is significantly different from the product listing',
+                  'Wrong item or size delivered due to a fulfillment error on our end',
+                  'Item arrives with a manufacturing defect that was not disclosed',
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-orange-500 mt-0.5 flex-shrink-0">—</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3">To initiate a return, visit <strong className="text-gray-900 font-medium">ast3r.store/returns</strong> or contact us directly within the 7-day window. Items must be unworn, unwashed, and in original condition with all tags intact. Return shipping costs for eligible claims will be covered by AST3R Fashion.</p>
+              <p className="mt-2 text-xs text-gray-400">Returns will not be accepted for items that have been worn, washed, altered, or damaged after delivery, or for change-of-mind purchases.</p>
+            </section>
+
+            <div className="w-full h-px bg-gray-100" />
+
+            <section>
+              <h3 className="text-xs font-semibold tracking-[0.2em] uppercase text-gray-900 mb-2">5. Contact & Support</h3>
+              <p>For any concerns regarding your order, please reach out to our team:</p>
+              <div className="mt-2 space-y-1 text-xs">
+                <p><span className="text-gray-400">Email:</span> <strong className="text-gray-900">inquiry@ast3r.store</strong></p>
+                <p><span className="text-gray-400">Phone / Viber:</span> <strong className="text-gray-900">0966 960 6060</strong></p>
+                <p><span className="text-gray-400">Instagram:</span> <strong className="text-gray-900">@ast3r.ph</strong></p>
+                <p><span className="text-gray-400">Store:</span> <strong className="text-gray-900">AST3R Boutique, Tagaytay City</strong></p>
+              </div>
+            </section>
+
+          </div>
+
+          {/* Footer CTA */}
+          <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex gap-3">
+            <button onClick={() => setShowPolicy(false)}
+              className="flex-1 border border-gray-200 text-gray-500 py-3 text-xs tracking-[0.2em] uppercase font-medium hover:border-gray-400 hover:text-gray-700 transition-all">
+              Close
+            </button>
+            <button onClick={() => { setPolicyAgreed(true); setShowPolicy(false); }}
+              className="flex-1 bg-gray-900 text-white py-3 text-xs tracking-[0.2em] uppercase font-medium hover:bg-orange-500 transition-all">
+              I Agree & Continue
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   );
 }
