@@ -9,6 +9,7 @@ import toast                   from 'react-hot-toast';
 import { formatPrice }         from '@/lib/utils';
 import { REGIONS, guessRegionFromAddress, type RegionId } from '@/lib/shipping';
 import type { CartItem }       from '@/lib/cart';
+import { supabase }            from '@/lib/supabase';
 
 // ── COD shipping fee logic ─────────────────────────────────────
 // 1 item = ₱199, each additional item +₱99
@@ -34,7 +35,8 @@ export default function CheckoutPage() {
   const router = useRouter();
   const [cart,    setCart]    = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [payMethod, setPayMethod] = useState<string>(''); // from session if coming back
+  const [payMethod, setPayMethod] = useState<string>('');
+  const [related, setRelated] = useState<any[]>([]); // from session if coming back
   const [form,    setForm]    = useState<FormData>({
     customer_name:  '',
     contact_number: '',
@@ -59,6 +61,16 @@ export default function CheckoutPage() {
     if (savedForm) {
       try { setForm(JSON.parse(savedForm)); } catch {}
     }
+
+    // Load related products (exclude cart items)
+    const skus = cartData.map((i: CartItem) => i.sku);
+    const cats = [...new Set(cartData.map((i: CartItem) => i.sku.split('-').slice(0,2).join('-')))];
+    supabase.from('products')
+      .select('sku, name, price, compare_price, image_url, category')
+      .eq('status', 'active')
+      .not('sku', 'in', `(${skus.join(',')})`)
+      .limit(4)
+      .then(({ data }) => { if (data) setRelated(data); });
   }, [router]);
 
   // Auto-detect region
@@ -137,6 +149,7 @@ export default function CheckoutPage() {
   );
 
   return (
+    <>
     <div className="min-h-screen bg-gray-50">
       {/* Top bar */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
@@ -392,5 +405,38 @@ export default function CheckoutPage() {
         </form>
       </div>
     </div>
+
+    {/* You might also like */}
+    {related.length > 0 && (
+      <div className="max-w-5xl mx-auto px-4 pb-12">
+        <div className="border-t border-gray-100 pt-8">
+          <p className="text-xs font-medium tracking-[0.2em] uppercase text-gray-400 mb-4">You Might Also Like</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {related.map(p => {
+              const onSale = p.compare_price && p.compare_price < p.price;
+              return (
+                <a key={p.sku} href={`/p/${p.sku}`} target="_blank" rel="noopener noreferrer"
+                  className="group block bg-white border border-gray-100 hover:border-gray-300 transition-colors p-2">
+                  <div className="relative aspect-[3/4] bg-gray-50 overflow-hidden mb-2">
+                    {p.image_url
+                      ? <Image src={p.image_url} alt={p.name} fill className="object-cover object-top group-hover:scale-105 transition-transform duration-500" sizes="150px"/>
+                      : <div className="absolute inset-0 flex items-center justify-center text-gray-200 font-serif text-xs">AST3R</div>}
+                  </div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-widest">{p.category}</p>
+                  <p className="text-xs font-medium text-gray-900 line-clamp-1 group-hover:text-orange-500 transition-colors">{p.name}</p>
+                  <div className="flex items-baseline gap-1.5 mt-0.5">
+                    {onSale
+                      ? <><span className="text-xs text-orange-500 font-medium">{formatPrice(p.compare_price)}</span>
+                          <span className="text-[10px] text-gray-400 line-through">{formatPrice(p.price)}</span></>
+                      : <span className="text-xs font-medium">{formatPrice(p.price)}</span>}
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

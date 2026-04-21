@@ -5,9 +5,14 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { formatPrice, getStockLabel } from '@/lib/utils';
 import OrderButton from './OrderButton';
+import WishlistButton from './WishlistButton';
+import ImageGallery from './ImageGallery';
 import Header from '@/components/Header';
 import QRDownload from './QRDownload';
 import ReviewForm from './ReviewForm';
+import RecentlyViewed from '@/components/RecentlyViewed';
+import TrackView from './TrackView';
+import CODChecker from './CODChecker';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://www.ast3r.store';
 
@@ -45,8 +50,8 @@ export default async function ProductPage(
     notFound();
   }
 
-  const [cpRes, sizeRes, relatedRes, reviewsRes] = await Promise.all([
-    supabase.from('products').select('compare_price').eq('sku', sku).single(),
+  const [cpRes, sizeRes, relatedRes, reviewsRes, imagesRes] = await Promise.all([
+    supabase.from('products').select('compare_price, video_url').eq('sku', sku).single(),
     supabase.from('size_inventory').select('size, quantity').eq('sku', sku).order('size'),
     supabase.from('products')
       .select('sku, name, price, compare_price, image_url, category')
@@ -59,10 +64,16 @@ export default async function ProductPage(
       .eq('sku', sku)
       .eq('verified', true)
       .order('created_at', { ascending: false }),
+    supabase.from('product_images')
+      .select('image_url, sort_order')
+      .eq('sku', sku)
+      .order('sort_order'),
   ]);
 
   const comparePrice: number | null = cpRes.data?.compare_price ?? null;
+  const videoUrl: string | null = cpRes.data?.video_url ?? null;
   const sizeInventory = sizeRes.data || [];
+  const extraImages = imagesRes.data || [];
   const relatedProducts = relatedRes.data || [];
   const reviews = reviewsRes.data || [];
 
@@ -91,39 +102,9 @@ export default async function ProductPage(
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 min-h-[calc(100vh-4rem)]">
 
-            {/* Left: Image */}
+            {/* Left: Image Gallery */}
             <div className="relative bg-brand-cream overflow-hidden aspect-[3/4]">
-              {product.image_url ? (
-                <Image
-                  src={product.image_url}
-                  alt={product.name}
-                  fill
-                  className="object-cover object-top"
-                  priority
-                  sizes="(max-width: 1024px) 100vw, 50vw"
-                />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="font-serif text-4xl text-brand-light">AST3R</span>
-                </div>
-              )}
-              <div className="absolute top-6 left-6">
-                <span className="bg-brand-white/90 backdrop-blur-sm px-3 py-1 text-xs tracking-widest uppercase font-medium text-brand-gray">
-                  {product.category}
-                </span>
-              </div>
-              {isOnSale && (
-                <div className="absolute top-6 right-6">
-                  <span className="bg-red-500 text-white px-3 py-1 text-xs font-bold">
-                    -{discountPct}% OFF
-                  </span>
-                </div>
-              )}
-              <div className="absolute bottom-6 right-6">
-                <span className="bg-brand-black/80 backdrop-blur-sm px-3 py-1 text-xs tracking-widest text-brand-white font-mono">
-                  {product.sku}
-                </span>
-              </div>
+              <ImageGallery mainImage={product.image_url} extraImages={extraImages} name={product.name} />
             </div>
 
             {/* Right: Info */}
@@ -136,9 +117,12 @@ export default async function ProductPage(
                 </span>
               </div>
 
-              <h1 className="display-lg text-brand-black mb-6 leading-tight">
-                {product.name}
-              </h1>
+              <div className="flex items-start justify-between gap-3 mb-6">
+                <h1 className="display-lg text-brand-black leading-tight">
+                  {product.name}
+                </h1>
+                <WishlistButton sku={product.sku} />
+              </div>
 
               {/* Price */}
               <div className="mb-6">
@@ -185,8 +169,30 @@ export default async function ProductPage(
                 sizes={sizeInventory}
               />
 
+              {/* Video player */}
+              {videoUrl && (
+                <div className="mt-6">
+                  <p className="text-xs font-medium tracking-widest uppercase text-brand-gray mb-2">Product Video</p>
+                  {videoUrl.includes('youtube') || videoUrl.includes('youtu.be') ? (
+                    <div className="relative aspect-video bg-brand-black">
+                      <iframe
+                        src={videoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'youtube.com/embed/')}
+                        className="absolute inset-0 w-full h-full"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  ) : (
+                    <video src={videoUrl} controls className="w-full bg-brand-black" />
+                  )}
+                </div>
+              )}
+
+              {/* COD Availability Checker */}
+              <CODChecker />
+
               {/* Info */}
-              <div className="mt-10 space-y-3 border-t border-brand-light pt-8">
+              <div className="mt-6 space-y-3 border-t border-brand-light pt-6">
                 <div className="text-xs text-brand-gray">🚚 Nationwide delivery via LBC / J&T</div>
                 <div className="text-xs text-brand-gray">📦 Worldwide shipping available</div>
                 <div className="text-xs text-brand-gray">💬 Questions? inquiry@ast3r.store</div>
@@ -338,6 +344,16 @@ export default async function ProductPage(
           </div>
         )}
       </main>
+
+      <TrackView
+        sku={product.sku}
+        name={product.name}
+        price={product.price}
+        compare_price={comparePrice}
+        image_url={product.image_url}
+        category={product.category}
+      />
+      <RecentlyViewed currentSku={product.sku} />
 
       <footer className="border-t border-brand-light bg-brand-cream py-8">
         <div className="max-w-7xl mx-auto px-4 text-center">

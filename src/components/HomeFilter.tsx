@@ -1,10 +1,11 @@
 // src/components/HomeFilter.tsx
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link  from 'next/link';
 import { formatPrice } from '@/lib/utils';
+import { toggleWishlist, getWishlist } from '@/lib/wishlist';
 
 type Product = {
   id: string; sku: string; name: string;
@@ -23,6 +24,20 @@ export default function HomeFilter({
 }) {
   const [search, setSearch] = useState('');
   const [cat,    setCat]    = useState('All');
+  const [wishlist, setWishlist] = useState<string[]>([]);
+
+  useEffect(() => {
+    setWishlist(getWishlist());
+    const onUpdate = () => setWishlist(getWishlist());
+    window.addEventListener('wishlist-updated', onUpdate);
+    return () => window.removeEventListener('wishlist-updated', onUpdate);
+  }, []);
+
+  const handleWishlist = useCallback((e: React.MouseEvent, sku: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleWishlist(sku);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -109,6 +124,15 @@ export default function HomeFilter({
                     {isSoldOut  && <span className="bg-[#666] text-white text-[9px] tracking-[0.15em] uppercase px-2.5 py-1">Sold Out</span>}
                     {isLowStock && <span className="bg-brand-orange text-white text-[9px] tracking-[0.15em] uppercase px-2.5 py-1">{stock} Left</span>}
                   </div>
+
+                  {/* Wishlist heart */}
+                  <button onClick={(e) => handleWishlist(e, product.sku)}
+                    className="absolute bottom-3 right-3 w-7 h-7 flex items-center justify-center bg-white/90 backdrop-blur-sm hover:bg-white transition-colors rounded-full shadow-sm"
+                    aria-label="Save to wishlist">
+                    <svg className="w-3.5 h-3.5" fill={wishlist.includes(product.sku) ? '#E8571A' : 'none'} stroke={wishlist.includes(product.sku) ? '#E8571A' : '#888'} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                    </svg>
+                  </button>
 
                   {/* Sale badge */}
                   {isOnSale && (

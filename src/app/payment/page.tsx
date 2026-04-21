@@ -433,9 +433,23 @@ export default function PaymentPage() {
                   </div>
                 </label>
                 {giftWrap && (
-                  <textarea value={giftMsg} onChange={e => setGiftMsg(e.target.value)}
-                    placeholder="Write your gift message here... (optional)"
-                    rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm resize-none mt-3 focus:outline-none focus:border-gray-400" />
+                  <div className="mt-3 space-y-2">
+                    <textarea value={giftMsg} onChange={e => setGiftMsg(e.target.value)}
+                      placeholder="Write your gift message here... (optional)"
+                      rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-gray-400" />
+                    {/* Gift card preview */}
+                    {giftMsg && (
+                      <div className="border border-orange-200 bg-orange-50 rounded-lg p-4 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-400 to-orange-300" />
+                        <p className="text-[10px] tracking-[0.25em] uppercase text-orange-400 mb-2 font-medium">AST3R Gift Message Preview</p>
+                        <p className="text-sm text-gray-700 leading-relaxed italic">&ldquo;{giftMsg}&rdquo;</p>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <span className="text-orange-400 text-xs">⊛</span>
+                          <span className="text-[10px] text-orange-400 tracking-wider">AST3R Fashion · With love</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

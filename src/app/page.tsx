@@ -4,6 +4,7 @@ import Link       from 'next/link';
 import { supabase }    from '@/lib/supabase';
 import Header          from '@/components/Header';
 import HomeFilter      from '@/components/HomeFilter';
+import FlashSaleBanner from '@/components/FlashSaleBanner';
 
 export const revalidate = 0;
 
@@ -28,9 +29,14 @@ export default async function HomePage() {
   const categories = ['All', ...Array.from(new Set(products.map((p: any) => p.category)))];
   const heroProduct = products.find((p: any) => p.image_url) || products[0];
 
+  // Flash sale settings
+  const { data: flashData } = await supabase.from('settings').select('value').eq('key', 'flash_sale').single();
+  const flashSale = flashData?.value || null;
+
   return (
     <>
       <Header />
+      <FlashSaleBanner sale={flashSale} />
       <main>
 
         {/* ── HERO ─────────────────────────────────────────────── */}

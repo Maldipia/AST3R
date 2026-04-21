@@ -83,6 +83,55 @@ function Badge({ s }: { s: string }) {
   return <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-sm ${STATUS_STYLES[s] || STATUS_STYLES.pending}`}>{s}</span>;
 }
 
+// ── Flash Sale Admin ─────────────────────────
+function FlashSaleAdmin() {
+  const [cfg, setCfg] = useState<any>({ active: false, title: 'Flash Sale', subtitle: 'Limited time offer', ends_at: '', banner_color: 'orange' });
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    supabase.from('settings').select('value').eq('key','flash_sale').single()
+      .then(({ data }) => { if (data?.value) setCfg({...data.value, ends_at: data.value.ends_at?.slice(0,16)||''}); setLoaded(true); });
+  }, []);
+  const save = async () => {
+    setSaving(true);
+    await supabase.from('settings').upsert({ key:'flash_sale', value: {...cfg, ends_at: cfg.ends_at||null}, updated_at: new Date().toISOString() });
+    setSaving(false);
+    toast.success('Flash sale settings saved');
+  };
+  if (!loaded) return <p className="text-xs text-gray-400">Loading...</p>;
+  return (
+    <div className="space-y-3">
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={cfg.active} onChange={e => setCfg((c:any)=>({...c,active:e.target.checked}))} className="w-4 h-4 accent-orange-500"/>
+        <span className="text-sm font-medium text-gray-700">Banner Active</span>
+        {cfg.active && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Live on homepage</span>}
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Title</label>
+          <input type="text" value={cfg.title} onChange={e=>setCfg((c:any)=>({...c,title:e.target.value}))}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-900"/>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Subtitle</label>
+          <input type="text" value={cfg.subtitle} onChange={e=>setCfg((c:any)=>({...c,subtitle:e.target.value}))}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-900"/>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Sale Ends At (optional)</label>
+        <input type="datetime-local" value={cfg.ends_at||''} onChange={e=>setCfg((c:any)=>({...c,ends_at:e.target.value}))}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-900"/>
+        <p className="text-xs text-gray-400 mt-1">Leave empty to show banner without countdown</p>
+      </div>
+      <button onClick={save} disabled={saving}
+        className="bg-brand-black text-white px-5 py-2 text-sm rounded-lg hover:bg-brand-orange transition-colors disabled:opacity-50">
+        {saving ? 'Saving...' : 'Save Flash Sale Settings'}
+      </button>
+    </div>
+  );
+}
+
 // ── Image Cell ─────────────────────────────────────────────────
 function ImageCell({ p, onDone }: { p: Product; onDone: (id: string, url: string) => void }) {
   const [busy, setBusy] = useState(false);
@@ -215,6 +264,7 @@ function EditModal({ p, onClose, onSaved }: { p: Product; onClose: () => void; o
     price: String(p.price), compare_price: String(p.compare_price || ''),
     category: p.category, status: p.status,
     stock: String(p.inventory?.[0]?.quantity ?? 0),
+    video_url: (p as any).video_url || '',
   });
   const [sizes, setSizes] = useState<Record<string, number>>(() => {
     const m: Record<string, number> = {};
@@ -377,6 +427,14 @@ function EditModal({ p, onClose, onSaved }: { p: Product; onClose: () => void; o
             <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Description</label>
             <textarea value={form.description} onChange={e => set('description', e.target.value)}
               rows={2} className="w-full border border-gray-200 rounded-sm px-3 py-2.5 text-sm focus:outline-none focus:border-gray-900 transition-all resize-none" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Video URL (YouTube or direct .mp4)</label>
+            <input type="text" value={(form as any).video_url || ''} onChange={e => set('video_url' as any, e.target.value)}
+              placeholder="https://youtube.com/watch?v=... or https://example.com/video.mp4"
+              className="w-full border border-gray-200 rounded-sm px-3 py-2.5 text-sm focus:outline-none focus:border-gray-900 transition-all" />
+            <p className="text-xs text-gray-400 mt-1">Optional — shows a video player on the product page</p>
           </div>
 
           {/* Sizes */}
@@ -879,6 +937,7 @@ export default function AdminPage() {
   const [promos,     setPromos]     = useState<any[]>([]);
   const [reviews,    setReviews]    = useState<any[]>([]);
   const [analytics,  setAnalytics]  = useState<any>(null);
+  const [flashSale,  setFlashSale]  = useState<any>(null);
   const [loading,    setLoading]    = useState(true);
   const [search,     setSearch]     = useState('');
   const [page,       setPage]       = useState(0);
@@ -920,6 +979,33 @@ export default function AdminPage() {
   }, []);
 
   // All load functions defined before useCallback that references them
+  const filteredOrders = orders.filter(o => {
+    const matchSearch = !orderSearch || 
+      o.order_code.toLowerCase().includes(orderSearch.toLowerCase()) ||
+      o.customer_name.toLowerCase().includes(orderSearch.toLowerCase()) ||
+      (o.contact_number || '').includes(orderSearch);
+    const matchStatus = orderStatus === 'all' || o.status === orderStatus;
+    return matchSearch && matchStatus;
+  });
+
+  const bulkUpdateOrders = async () => {
+    if (!bulkStatus || selectedOrders.size === 0) return;
+    const ids = Array.from(selectedOrders);
+    for (const id of ids) {
+      await supabase.from('orders').update({ status: bulkStatus }).eq('id', id);
+    }
+    toast.success(`Updated ${ids.length} orders to "${bulkStatus}"`);
+    setSelectedOrders(new Set());
+    setBulkStatus('');
+    loadOrders();
+  };
+
+  const autoCancelOrders = async () => {
+    const { data } = await supabase.rpc('auto_cancel_unpaid_orders');
+    toast.success(`Auto-cancelled ${data || 0} unpaid GCash orders older than 24h`);
+    loadOrders();
+  };
+
   const loadProducts = async () => {
     const { data } = await supabase.from('products').select('*, inventory(quantity), size_inventory(size,quantity)').order('created_at', { ascending: false });
     if (data) {
@@ -955,7 +1041,25 @@ export default function AdminPage() {
     const byRegion = ords.reduce((m:any,o) => { if(o.region)m[o.region]=(m[o.region]||0)+1; return m; }, {});
     const byDay: Record<string,number> = {};
     ords.forEach(o => { const d=o.created_at?.slice(0,10)||''; if(d) byDay[d]=(byDay[d]||0)+Number(o.total_amount); });
-    setAnalytics({ revenue, byStatus, byRegion, byDay, total:ords.length });
+    // Best sellers from order_items
+    const { data: items } = await supabase
+      .from('order_items').select('sku, quantity, price');
+    const sellerMap: Record<string,{sku:string,qty:number,rev:number}> = {};
+    (items||[]).forEach((i:any) => {
+      if (!sellerMap[i.sku]) sellerMap[i.sku] = {sku:i.sku,qty:0,rev:0};
+      sellerMap[i.sku].qty += i.quantity;
+      sellerMap[i.sku].rev += i.quantity * Number(i.price);
+    });
+    const bestSellers = Object.values(sellerMap).sort((a,b)=>b.qty-a.qty).slice(0,5);
+
+    // Revenue by period
+    const now = new Date();
+    const last30 = new Date(now.getTime() - 30*24*60*60*1000).toISOString().slice(0,10);
+    const last7  = new Date(now.getTime() - 7*24*60*60*1000).toISOString().slice(0,10);
+    const rev30  = ords.filter(o=>o.created_at?.slice(0,10)>=last30).reduce((s,o)=>s+Number(o.total_amount),0);
+    const rev7   = ords.filter(o=>o.created_at?.slice(0,10)>=last7).reduce((s,o)=>s+Number(o.total_amount),0);
+
+    setAnalytics({ revenue, byStatus, byRegion, byDay, total:ords.length, bestSellers, rev30, rev7 });
   };
 
   const loadPayMethods = async () => {
@@ -1310,6 +1414,44 @@ export default function AdminPage() {
                   </div>
                 </div>
               )}
+
+              {/* Best sellers */}
+              {analytics.bestSellers?.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <h3 className="font-semibold text-gray-900 mb-4">Top Products by Orders</h3>
+                  <div className="space-y-2">
+                    {analytics.bestSellers.map((s:any, i:number) => (
+                      <div key={s.sku} className="flex items-center gap-3">
+                        <span className="w-5 h-5 flex items-center justify-center bg-gray-100 text-gray-500 text-xs font-bold rounded-full flex-shrink-0">{i+1}</span>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-center">
+                            <span className="font-mono text-xs font-medium text-gray-900">{s.sku}</span>
+                            <span className="text-xs text-gray-400">{s.qty} sold · {formatPrice(s.rev)}</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full mt-1 overflow-hidden">
+                            <div className="h-full bg-brand-orange rounded-full transition-all"
+                              style={{width: `${Math.round((s.qty / analytics.bestSellers[0].qty) * 100)}%`}} />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Revenue period cards */}
+              <div className="grid grid-cols-3 gap-4">
+                {[
+                  { label: 'All Time', value: analytics.revenue },
+                  { label: 'Last 30 Days', value: analytics.rev30 || 0 },
+                  { label: 'Last 7 Days', value: analytics.rev7 || 0 },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-white border border-gray-200 rounded-xl p-4 text-center">
+                    <p className="text-xs text-gray-400 tracking-widest uppercase mb-1">{label}</p>
+                    <p className="font-serif text-2xl text-brand-black">{formatPrice(value)}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1549,20 +1691,64 @@ export default function AdminPage() {
           {/* ══ ORDERS ════════════════════════════════════════════ */}
           {tab === 'orders' && (
             <div className="space-y-4 max-w-5xl">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-500">{orders.length} total - {stats.pending} pending</p>
-                <button onClick={loadOrders} className="border border-gray-200 rounded-lg px-4 py-2 text-sm bg-white hover:bg-gray-50 shadow-sm">Refresh</button>
+              {/* Search + filter controls */}
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <input type="text" placeholder="Search by name, order code, phone..." value={orderSearch}
+                    onChange={e => setOrderSearch(e.target.value)}
+                    className="flex-1 min-w-[200px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-900" />
+                  <select value={orderStatus} onChange={e => setOrderStatus(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none">
+                    <option value="all">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                    <option value="processing">Processing</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                  <button onClick={loadOrders} className="border border-gray-200 rounded-lg px-4 py-2 text-sm bg-white hover:bg-gray-50">Refresh</button>
+                  <button onClick={autoCancelOrders} className="border border-red-200 rounded-lg px-4 py-2 text-sm bg-red-50 text-red-600 hover:bg-red-100">
+                    Auto-Cancel Unpaid (24h+)
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span>{filteredOrders.length} of {orders.length} orders</span>
+                  {selectedOrders.size > 0 && (
+                    <div className="flex items-center gap-2 ml-4">
+                      <span className="font-medium text-gray-900">{selectedOrders.size} selected</span>
+                      <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-xs bg-white">
+                        <option value="">Set status...</option>
+                        <option value="paid">Paid</option>
+                        <option value="processing">Processing</option>
+                        <option value="shipped">Shipped</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                      <button onClick={bulkUpdateOrders} disabled={!bulkStatus}
+                        className="bg-gray-900 text-white px-3 py-1 rounded text-xs hover:bg-gray-700 disabled:opacity-40">
+                        Apply
+                      </button>
+                      <button onClick={() => setSelectedOrders(new Set())} className="text-gray-400 hover:text-gray-600">Clear</button>
+                    </div>
+                  )}
+                </div>
               </div>
               {orders.length === 0 ? (
                 <div className="text-center py-20 bg-white rounded-xl border border-gray-200">
                   <p className="text-4xl mb-4">📭</p><p className="text-gray-400">No orders yet</p>
                 </div>
-              ) : orders.map(order => {
+              ) : filteredOrders.map(order => {
                 const pay = order.payments?.[0];
+                const isSelected = selectedOrders.has(order.id);
                 return (
-                  <div key={order.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div key={order.id} className={`bg-white border rounded-xl overflow-hidden shadow-sm transition-all ${isSelected ? 'border-brand-orange ring-1 ring-brand-orange/30' : 'border-gray-200'}`}>
                     <div className="flex flex-wrap justify-between gap-3 px-5 py-4 border-b border-gray-100">
                       <div className="flex items-center gap-3 flex-wrap">
+                        <input type="checkbox" checked={isSelected}
+                          onChange={e => { const s = new Set(selectedOrders); e.target.checked ? s.add(order.id) : s.delete(order.id); setSelectedOrders(s); }}
+                          className="w-4 h-4 accent-orange-500" />
                         <span className="font-mono font-bold text-gray-900 text-sm tracking-wide">{order.order_code}</span>
                         <Badge s={order.status} />
                         {pay && pay.status !== order.status && <Badge s={pay.status} />}
@@ -1619,6 +1805,10 @@ export default function AdminPage() {
                           <button onClick={()=>verifyPayment(order.id)} className="text-xs px-4 py-1.5 bg-emerald-500 text-white rounded-sm hover:bg-emerald-600">Verify</button>
                           <button onClick={()=>rejectPayment(order.id)} className="text-xs px-4 py-1.5 bg-red-500 text-white rounded-sm hover:bg-red-600">Reject</button>
                         </>}
+                        <a href={`/admin/print/${order.id}`} target="_blank"
+                          className="text-xs px-3 py-1.5 border border-gray-200 text-gray-500 rounded-sm hover:bg-gray-50 flex items-center gap-1.5">
+                          🖨️ Print Slip
+                        </a>
                       </div>
                     </div>
                   </div>
@@ -1868,6 +2058,12 @@ export default function AdminPage() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* Flash Sale Settings */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+                <h3 className="font-semibold text-gray-900">Flash Sale Banner</h3>
+                <FlashSaleAdmin />
               </div>
 
               <button onClick={signOut} className="w-full border border-red-200 text-red-500 py-3 text-sm rounded-xl hover:bg-red-50 transition-colors">Sign Out</button>
