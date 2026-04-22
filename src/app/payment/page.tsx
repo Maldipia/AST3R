@@ -21,7 +21,8 @@ export default function PaymentPage() {
   const [promoErr,  setPromoErr]  = useState('');
   const [giftWrap,  setGiftWrap]  = useState(false);
   const [giftMsg,   setGiftMsg]   = useState('');
-  const [loading,    setLoading]    = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [paymongoLoading, setPaymongoLoading] = useState(false);
   const [showPolicy,   setShowPolicy]   = useState(false);
   const [policyAgreed, setPolicyAgreed] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -84,6 +85,57 @@ export default function PaymentPage() {
   const validate = (): boolean => {
     if (!proofFile) { toast.error('Please upload your proof of payment screenshot'); return false; }
     return true;
+  };
+
+  const payWithPayMongo = async () => {
+    if (!orderForm || !cart) return;
+    setPaymongoLoading(true);
+    const orderCode = generateOrderCode();
+
+    // Create order first with pending status
+    const res = await fetch('/api/create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderCode, orderForm, cart,
+        total, subtotal,
+        shippingFee: orderForm.shipping_fee ?? 0,
+        discount: promoData ? (
+          promoData.type === 'percent' ? Math.round(subtotal * promoData.value / 100) :
+          promoData.type === 'fixed' ? Math.min(promoData.value, subtotal) : 0
+        ) : 0,
+        promoData, giftWrap, giftMsg,
+        method: { type: 'paymongo', label: 'Online Payment (PayMongo)' },
+        proofUrl: null,
+      }),
+    });
+    const orderResult = await res.json();
+    if (!orderResult.ok) {
+      toast.error(orderResult.error || 'Failed to create order');
+      setPaymongoLoading(false);
+      return;
+    }
+
+    // Create PayMongo payment link
+    const pmRes = await fetch('/api/paymongo-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: total,
+        orderCode,
+        description: `AST3R Order ${orderCode} — ${orderForm.customer_name}`,
+      }),
+    });
+    const pmData = await pmRes.json();
+    if (!pmData.ok || !pmData.checkoutUrl) {
+      toast.error(pmData.error || 'Could not create payment link');
+      setPaymongoLoading(false);
+      return;
+    }
+
+    // Save PayMongo link to session then redirect
+    sessionStorage.setItem('ast3r_paymongo_order', orderCode);
+    window.location.href = pmData.checkoutUrl;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -237,6 +289,45 @@ export default function PaymentPage() {
                   <span className="text-sm text-gray-600 font-medium">Amount to pay</span>
                   <span className="font-bold text-2xl text-orange-500">{formatPrice(total)}</span>
                 </div>
+              </div>
+
+              {/* ── PAY ONLINE VIA PAYMONGO ── */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 text-sm">Pay Online (Card / GCash / Maya / GrabPay)</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">Instant confirmation — no proof needed</p>
+                  </div>
+                  <span className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium tracking-wide">Recommended</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={payWithPayMongo}
+                  disabled={paymongoLoading}
+                  className="w-full py-3.5 bg-[#0B3D91] text-white text-sm font-semibold rounded-xl hover:bg-[#092e6e] transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                  {paymongoLoading ? (
+                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Redirecting to PayMongo...</>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                      </svg>
+                      Pay ₱{total.toLocaleString('en-PH', {minimumFractionDigits:2})} via PayMongo
+                    </>
+                  )}
+                </button>
+                <div className="flex items-center justify-center gap-3 mt-3">
+                  {['Visa','Mastercard','GCash','Maya','GrabPay'].map(m => (
+                    <span key={m} className="text-[10px] text-gray-400 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded">{m}</span>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── OR DIVIDER ── */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-xs text-gray-400 font-medium">OR pay via QR below</span>
+                <div className="flex-1 h-px bg-gray-200" />
               </div>
 
               {/* ── PROOF OF PAYMENT UPLOAD ── */}
