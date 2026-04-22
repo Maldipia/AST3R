@@ -357,8 +357,8 @@ function EditModal({ p, onClose, onSaved }: { p: Product; onClose: () => void; o
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
           {/* Image */}
           <div className="flex items-center gap-4">
-            <div className="w-20 h-20 bg-gray-100 border border-gray-200 overflow-hidden relative flex-shrink-0 rounded-sm">
-              {imgPrev ? <Image src={imgPrev} alt="" fill className="object-cover" sizes="80px" /> : <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-2xl">+</div>}
+            <div className="w-36 h-44 bg-gray-100 border border-gray-200 overflow-hidden relative flex-shrink-0 rounded-sm">
+              {imgPrev ? <Image src={imgPrev} alt="" fill className="object-cover" sizes="144px" /> : <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-2xl">+</div>}
               {imgUp && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>}
             </div>
             <div className="flex-1">
