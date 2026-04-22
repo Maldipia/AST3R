@@ -2089,15 +2089,6 @@ export default function AdminPage() {
           {tab === 'settings' && (
             <div className="max-w-3xl space-y-6">
 
-              {/* Payment Methods & QR Codes */}
-              <PaymentManager
-                methods={payMethods}
-                uploading={pmUploading}
-                onUpload={(pm, file) => uploadPayQR(pm, file)}
-                onUpdate={(pm, updates) => updatePayMethod(pm, updates)}
-                onReload={loadPayMethods}
-              />
-
               {/* Store Info */}
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-gray-100"><h3 className="font-semibold text-gray-900 text-sm">Store Info</h3></div>
