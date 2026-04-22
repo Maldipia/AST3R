@@ -9,19 +9,12 @@ import toast            from 'react-hot-toast';
 import { supabase }     from '@/lib/supabase';
 import { formatPrice, generateOrderCode } from '@/lib/utils';
 
-interface PaymentMethod {
-  id: string; type: string; label: string;
-  account_name: string | null; account_number: string | null;
-  qr_url: string | null; instructions: string | null;
-  sort_order: number;
-}
+
 
 export default function PaymentPage() {
   const router = useRouter();
   const [cart,      setCart]      = useState<any[]>([]);
   const [orderForm, setOrderForm] = useState<any>(null);
-  const [methods,   setMethods]   = useState<PaymentMethod[]>([]);
-  const [method,    setMethod]    = useState<PaymentMethod | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPrev, setProofPrev] = useState('');
   const [promoCode, setPromoCode] = useState('');
@@ -50,12 +43,10 @@ export default function PaymentPage() {
   }, [router]);
 
   const subtotal        = cart.reduce((s, i) => s + i.price * i.quantity, 0);
-  const isCODSelected   = method?.type === 'cod';
-  // COD uses tiered fee: ₱199 first item + ₱99 each additional
   const codShippingFee  = orderForm?.cod_shipping_fee ?? (
     orderForm?.total_items ? 199 + Math.max(0, (orderForm.total_items - 1)) * 99 : 199
   );
-  const shippingFee     = isCODSelected ? codShippingFee : (orderForm?.shipping_fee ?? 0);
+  const shippingFee     = orderForm?.shipping_fee ?? 0;
   const discount    = promoData
     ? promoData.type === 'percent'       ? Math.round(subtotal * promoData.value / 100)
     : promoData.type === 'fixed'         ? Math.min(promoData.value, subtotal)
@@ -91,10 +82,7 @@ export default function PaymentPage() {
     }
   };
 
-  const isPayLater = method?.type === 'later';
-  const isCOD      = method?.type === 'cod';
-  const isCOP      = method?.type === 'cop';
-  const needsProof = !isPayLater && !isCOD && !isCOP;
+
 
   const validate = (): boolean => {
     if (!proofFile) { toast.error('Please upload your proof of payment'); return false; }
@@ -319,69 +307,11 @@ export default function PaymentPage() {
                 </div>
               )}
 
-              {/* COD info */}
-              {isCOD && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-                  <p className="text-2xl mb-3">💵</p>
-                  <h3 className="font-semibold text-amber-800 mb-2">Cash on Delivery</h3>
-                  {/* COD fee breakdown */}
-                  <div className="bg-white border border-amber-200 rounded-lg p-3 mb-4">
-                    <p className="text-xs font-semibold text-amber-800 mb-2">COD Shipping Fee Breakdown</p>
-                    <div className="space-y-1 text-xs text-amber-700">
-                      <div className="flex justify-between"><span>1st item</span><span className="font-medium">₱199</span></div>
-                      {(orderForm?.total_items || 1) > 1 && (
-                        <div className="flex justify-between">
-                          <span>{(orderForm?.total_items || 1) - 1} additional item{(orderForm?.total_items || 1) - 1 > 1 ? 's' : ''} × ₱99</span>
-                          <span className="font-medium">₱{((orderForm?.total_items || 1) - 1) * 99}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between border-t border-amber-200 pt-1 font-bold text-amber-900">
-                        <span>Total COD Shipping</span>
-                        <span>{formatPrice(codShippingFee)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <ul className="text-sm text-amber-700 space-y-1.5">
-                    <li>✅ Pay cash when your order arrives</li>
-                    <li>✅ Prepare exact amount: <strong>{formatPrice(total)}</strong></li>
-                    <li>✅ Available for Metro Manila and Luzon</li>
-                    <li>⚠️ Orders may be cancelled if unreachable</li>
-                  </ul>
-                </div>
-              )}
 
-              {/* COP info */}
-              {isCOP && (
-                <div className="bg-purple-50 border border-purple-200 rounded-xl p-5">
-                  <p className="text-2xl mb-3">🏪</p>
-                  <h3 className="font-semibold text-purple-800 mb-2">Cash on Pick-up</h3>
-                  <ul className="text-sm text-purple-700 space-y-1.5">
-                    <li>✅ Visit our store to pay and pick up</li>
-                    <li>✅ Bring exact amount: <strong>{formatPrice(total)}</strong></li>
-                    <li>📍 SVC Amadeo, Cavite</li>
-                    <li>🕐 Monday - Saturday, 9AM - 6PM</li>
-                  </ul>
-                </div>
-              )}
 
-              {/* Pay Later info */}
-              {isPayLater && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
-                  <p className="text-2xl mb-3">🕐</p>
-                  <h3 className="font-semibold text-blue-800 mb-2">Pay Later - 3 Days</h3>
-                  <p className="text-sm text-blue-700 mb-3">Your order will be reserved for 3 days. Send payment within that time to avoid cancellation.</p>
-                  <ul className="text-sm text-blue-700 space-y-1.5">
-                    <li>✅ Order reserved immediately</li>
-                    <li>✅ Pay within 3 days via GCash, Maya, or bank</li>
-                    <li>✅ Send proof to <strong>inquiry@ast3r.store</strong></li>
-                    <li>⚠️ Order cancelled if no payment received after 3 days</li>
-                  </ul>
-                  <div className="mt-3 bg-blue-100 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-blue-800">Amount Due: {formatPrice(total)}</p>
-                    <p className="text-xs text-blue-600 mt-0.5">Due within 3 days of placing order</p>
-                  </div>
-                </div>
-              )}
+
+
+
 
               {/* Promo code */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
