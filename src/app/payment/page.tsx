@@ -9,12 +9,11 @@ import toast            from 'react-hot-toast';
 import { supabase }     from '@/lib/supabase';
 import { formatPrice, generateOrderCode } from '@/lib/utils';
 
-
-
 export default function PaymentPage() {
   const router = useRouter();
   const [cart,      setCart]      = useState<any[]>([]);
   const [orderForm, setOrderForm] = useState<any>(null);
+  const [paymentQR,  setPaymentQR]  = useState<string|null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPrev, setProofPrev] = useState('');
   const [promoCode, setPromoCode] = useState('');
@@ -23,7 +22,6 @@ export default function PaymentPage() {
   const [giftWrap,  setGiftWrap]  = useState(false);
   const [giftMsg,   setGiftMsg]   = useState('');
   const [loading,    setLoading]    = useState(false);
-  const [paymentQR,   setPaymentQR]   = useState<string|null>(null);
   const [showPolicy,   setShowPolicy]   = useState(false);
   const [policyAgreed, setPolicyAgreed] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -35,7 +33,7 @@ export default function PaymentPage() {
     setCart(JSON.parse(cartRaw));
     setOrderForm(JSON.parse(formRaw));
 
-    // Load single QR from payment_settings
+    // Load single payment QR from payment_settings
     supabase.from('payment_settings').select('qr_image_url').eq('is_active', true).limit(1)
       .then(({ data, error }: any) => {
         if (!error && data?.[0]?.qr_image_url) setPaymentQR(data[0].qr_image_url);
@@ -83,9 +81,8 @@ export default function PaymentPage() {
   };
 
 
-
   const validate = (): boolean => {
-    if (!proofFile) { toast.error('Please upload your proof of payment'); return false; }
+    if (!proofFile) { toast.error('Please upload your proof of payment screenshot'); return false; }
     return true;
   };
 
@@ -147,11 +144,7 @@ export default function PaymentPage() {
     }
   };
 
-  const ICONS: Record<string, string> = {
-    gcash: '📱', maya: '💙', bdo: '🏦', bpi: '🏦', cod: '💵', cop: '🏪', later: '🕐',
-  };
-
-  if (!cart.length) return (
+    if (!cart.length) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <p className="text-gray-400 text-sm animate-pulse">Loading...</p>
     </div>
@@ -224,118 +217,29 @@ export default function PaymentPage() {
               )}
 
               {/* Payment method selection */}
-              {/* Single Payment QR - full width */}
+                            {/* ── SINGLE QR PAYMENT ── */}
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <div className="px-5 pt-5 pb-2">
+                <div className="px-5 pt-5 pb-3">
                   <h2 className="font-semibold text-gray-900 text-sm tracking-wide">Payment</h2>
-                  <p className="text-xs text-gray-400 mt-1">Scan the QR code below to send payment, then upload your screenshot</p>
+                  <p className="text-xs text-gray-400 mt-1">Scan the QR code below, send the exact amount, then upload your screenshot proof</p>
                 </div>
                 {paymentQR ? (
-                  <img src={paymentQR} alt="Payment QR Code" className="w-full object-contain max-h-96 bg-white" />
+                  <img src={paymentQR} alt="Payment QR Code" className="w-full object-contain bg-white" style={{maxHeight:'420px'}} />
                 ) : (
-                  <div className="mx-5 mb-5 mt-3 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center py-10 text-gray-300">
-                    <svg className="w-10 h-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="mx-5 mb-5 mt-2 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center py-12 text-gray-300">
+                    <svg className="w-10 h-10 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.243m-4.243 0l-.001.01M12 12H8M6 20h4m0 0h4m-4 0v-4m0 0H8" />
                     </svg>
-                    <p className="text-xs text-center px-4">QR not uploaded yet — admin can add it in Settings</p>
+                    <p className="text-xs text-center px-4">Payment QR not yet uploaded.<br/>Go to Admin → Settings → Payment QR</p>
                   </div>
                 )}
-                <div className="px-5 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                  <span className="text-sm text-gray-500 font-medium">Amount to pay</span>
-                  <span className="font-bold text-xl text-orange-500">{formatPrice(total)}</span>
+                <div className="px-5 py-4 bg-orange-50 border-t border-orange-100 flex items-center justify-between">
+                  <span className="text-sm text-gray-600 font-medium">Amount to pay</span>
+                  <span className="font-bold text-2xl text-orange-500">{formatPrice(total)}</span>
                 </div>
               </div>
 
-
-                    </div>
-
-                    {/* Account details + instructions */}
-                    <div className="space-y-3">
-                      {method.account_name && (
-                        <div className="bg-gray-50 rounded-lg p-3">
-                          <p className="text-xs text-gray-400 mb-1">Account Name</p>
-                          <p className="font-semibold text-gray-900 text-sm">{method.account_name}</p>
-                        </div>
-                      )}
-                      {method.account_number && (
-                        <div className="bg-orange-50 border border-orange-100 rounded-lg p-3">
-                          <p className="text-xs text-gray-400 mb-1">Number / Account</p>
-                          <p className="font-bold text-gray-900 text-lg tracking-wider">{method.account_number}</p>
-                        </div>
-                      )}
-                      <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                        <p className="text-xs font-semibold text-blue-700 mb-1">Amount to Send</p>
-                        <p className="font-bold text-blue-900 text-xl">{formatPrice(total)}</p>
-                      </div>
-                      {method.instructions && (
-                        <p className="text-xs text-gray-500 leading-relaxed">{method.instructions}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Upload proof */}
-                  <div className="mt-5 border-t border-gray-100 pt-5">
-                    <p className="text-sm font-semibold text-gray-900 mb-3">Upload Payment Proof *</p>
-                    <div
-                      className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${proofFile ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-orange-300 hover:bg-orange-50/30'}`}
-                      onClick={() => fileRef.current?.click()}
-                      onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleProofFile(f); }}
-                      onDragOver={e => e.preventDefault()}>
-                      <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden"
-                        onChange={e => { const f = e.target.files?.[0]; if (f) handleProofFile(f); e.target.value = ''; }} />
-                      {proofPrev ? (
-                        <div>
-                          <img src={proofPrev} alt="proof" className="mx-auto max-h-40 rounded-lg mb-2 object-contain" />
-                          <p className="text-xs text-green-600 font-medium">{proofFile?.name}</p>
-                          <p className="text-xs text-gray-400 mt-1">Click to change</p>
-                        </div>
-                      ) : proofFile ? (
-                        <div>
-                          <p className="text-2xl mb-2">📄</p>
-                          <p className="text-xs text-green-600 font-medium">{proofFile.name}</p>
-                          <p className="text-xs text-gray-400 mt-1">Click to change</p>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-3xl mb-2">📸</p>
-                          <p className="text-sm text-gray-500">Click or drag screenshot here</p>
-                          <p className="text-xs text-gray-400 mt-1">JPG, PNG, or PDF</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-
-
-
-
-
-
-              {/* Promo code */}
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <p className="text-sm font-semibold text-gray-900 mb-3">🏷️ Promo Code</p>
-                <div className="flex gap-2">
-                  <input type="text" placeholder="Enter code (e.g. WELCOME10)"
-                    value={promoCode} onChange={e => setPromoCode(e.target.value.toUpperCase())}
-                    onKeyDown={e => e.key === 'Enter' && applyPromo()}
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-gray-400"
-                    disabled={!!promoData} />
-                  {promoData ? (
-                    <button type="button" onClick={() => { setPromoData(null); setPromoCode(''); setPromoErr(''); }}
-                      className="px-4 py-2 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50">Remove</button>
-                  ) : (
-                    <button type="button" onClick={applyPromo}
-                      className="px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">Apply</button>
-                  )}
-                </div>
-                {promoErr  && <p className="text-red-500 text-xs mt-2">{promoErr}</p>}
-                {promoData && <p className="text-green-600 text-xs mt-2 font-medium">Promo applied: {promoData.type === 'percent' ? promoData.value + '% off' : promoData.type === 'free_shipping' ? 'Free shipping' : 'P' + promoData.value + ' off'}</p>}
-              </div>
-
-              {/* Gift wrap */}
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
+<div className="bg-white border border-gray-200 rounded-xl p-5">
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input type="checkbox" checked={giftWrap} onChange={e => setGiftWrap(e.target.checked)} className="mt-0.5 accent-orange-500 w-4 h-4" />
                   <div>
