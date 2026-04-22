@@ -90,11 +90,18 @@ function FlashSaleAdmin() {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     supabase.from('settings').select('value').eq('key','flash_sale').single()
-      .then(({ data }) => { if (data?.value) setCfg({...data.value, ends_at: data.value.ends_at?.slice(0,16)||''}); setLoaded(true); });
+      .then(({ data }: any) => {
+        if (data?.value) setCfg({...data.value, ends_at: data.value.ends_at?.slice(0,16)||''});
+        setLoaded(true);
+      });
   }, []);
   const save = async () => {
     setSaving(true);
-    await supabase.from('settings').upsert({ key:'flash_sale', value: {...cfg, ends_at: cfg.ends_at||null}, updated_at: new Date().toISOString() });
+    await supabase.from('settings').upsert({
+      key: 'flash_sale',
+      value: {...cfg, ends_at: cfg.ends_at || null},
+      updated_at: new Date().toISOString()
+    });
     setSaving(false);
     toast.success('Flash sale settings saved');
   };
@@ -933,11 +940,15 @@ export default function AdminPage() {
   const [tab,        setTab]        = useState<Tab>('dashboard');
   const [user,       setUser]       = useState<any>(null);
   const [products,   setProducts]   = useState<Product[]>([]);
-  const [orders,     setOrders]     = useState<Order[]>([]);
-  const [promos,     setPromos]     = useState<any[]>([]);
-  const [reviews,    setReviews]    = useState<any[]>([]);
-  const [analytics,  setAnalytics]  = useState<any>(null);
-  const [flashSale,  setFlashSale]  = useState<any>(null);
+  const [orders,       setOrders]       = useState<Order[]>([]);
+  const [promos,       setPromos]       = useState<any[]>([]);
+  const [reviews,      setReviews]      = useState<any[]>([]);
+  const [analytics,    setAnalytics]    = useState<any>(null);
+  const [flashSale,    setFlashSale]    = useState<any>(null);
+  const [orderSearch,  setOrderSearch]  = useState('');
+  const [orderStatus,  setOrderStatus]  = useState('all');
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [bulkStatus,   setBulkStatus]   = useState('');
   const [loading,    setLoading]    = useState(true);
   const [search,     setSearch]     = useState('');
   const [page,       setPage]       = useState(0);
