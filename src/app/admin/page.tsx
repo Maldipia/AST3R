@@ -83,6 +83,72 @@ function Badge({ s }: { s: string }) {
   return <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-sm ${STATUS_STYLES[s] || STATUS_STYLES.pending}`}>{s}</span>;
 }
 
+// ── Payment QR Admin ────────────────────────
+function PaymentQRAdmin() {
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    supabase.from('payment_settings').select('qr_image_url').eq('is_active', true).limit(1)
+      .then(({ data, error }: any) => {
+        if (!error && data?.[0]?.qr_image_url) setQrUrl(data[0].qr_image_url);
+      });
+  }, []);
+
+  const upload = async (file: File) => {
+    if (!file.type.startsWith('image/')) { toast.error('Please upload an image'); return; }
+    setUploading(true);
+    const t = toast.loading('Uploading QR...');
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const fn = 'payment-qr-' + Date.now() + '.' + ext;
+      const { error: upErr } = await supabase.storage.from('payment-qr').upload(fn, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from('payment-qr').getPublicUrl(fn);
+      const { error: dbErr } = await supabase.from('payment_settings').update({ qr_image_url: publicUrl }).eq('is_active', true);
+      if (dbErr) throw dbErr;
+      setQrUrl(publicUrl);
+      toast.dismiss(t);
+      toast.success('Payment QR updated ✅');
+    } catch (e: any) {
+      toast.dismiss(t);
+      toast.error(e.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {qrUrl ? (
+        <div className="relative inline-block">
+          <img src={qrUrl} alt="Payment QR" className="w-48 h-48 object-contain border border-gray-200 rounded-xl bg-white p-2" />
+          <span className="absolute top-2 right-2 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full">Live</span>
+        </div>
+      ) : (
+        <div className="w-48 h-48 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-gray-300 text-sm">
+          No QR uploaded
+        </div>
+      )}
+      <div>
+        <input ref={inputRef} type="file" accept="image/*" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />
+        <button onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="bg-brand-black text-white px-5 py-2.5 text-sm rounded-lg hover:bg-brand-orange transition-colors disabled:opacity-50 flex items-center gap-2">
+          {uploading ? (
+            <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Uploading...</>
+          ) : (
+            <>{qrUrl ? '↑ Replace QR Image' : '↑ Upload QR Image'}</>
+          )}
+        </button>
+        <p className="text-xs text-gray-400 mt-2">JPG, PNG, WEBP · Recommended: square image</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Flash Sale Admin ─────────────────────────
 function FlashSaleAdmin() {
   const [cfg, setCfg] = useState<any>({ active: false, title: 'Flash Sale', subtitle: 'Limited time offer', ends_at: '', banner_color: 'orange' });
@@ -2069,6 +2135,13 @@ export default function AdminPage() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* Payment QR Upload */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+                <h3 className="font-semibold text-gray-900">Payment QR Code</h3>
+                <p className="text-xs text-gray-400">This single QR image is shown full-width at checkout. Upload your GCash, Maya, or bank QR here.</p>
+                <PaymentQRAdmin />
               </div>
 
               {/* Flash Sale Settings */}
