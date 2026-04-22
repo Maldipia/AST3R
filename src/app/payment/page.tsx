@@ -224,7 +224,7 @@ export default function PaymentPage() {
                   <p className="text-xs text-gray-400 mt-1">Scan the QR code below, send the exact amount, then upload your screenshot proof</p>
                 </div>
                 {paymentQR ? (
-                  <img src={paymentQR} alt="Payment QR Code" className="w-full object-contain bg-white" style={{maxHeight:'420px'}} />
+                  <img src={paymentQR} alt="Payment QR Code" className="w-full block bg-white" style={{display:"block",width:"100%"}} />
                 ) : (
                   <div className="mx-5 mb-5 mt-2 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center py-12 text-gray-300">
                     <svg className="w-10 h-10 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -239,7 +239,55 @@ export default function PaymentPage() {
                 </div>
               </div>
 
-<div className="bg-white border border-gray-200 rounded-xl p-5">
+              {/* ── PROOF OF PAYMENT UPLOAD ── */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-1">Upload Proof of Payment</h3>
+                  <p className="text-xs text-gray-400">Screenshot of your payment confirmation (GCash, bank transfer, etc.)</p>
+                </div>
+
+                {/* Drop zone */}
+                <div
+                  onClick={() => fileRef.current?.click()}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleProofFile(f); }}
+                  className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+                    proofFile ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-gray-400 hover:bg-gray-50'
+                  }`}>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleProofFile(f); }}
+                  />
+                  {proofPrev ? (
+                    <div className="space-y-2">
+                      <img src={proofPrev} alt="Proof preview" className="max-h-48 mx-auto rounded-lg object-contain border border-orange-200" />
+                      <p className="text-xs text-orange-600 font-medium">✓ {proofFile?.name}</p>
+                      <p className="text-xs text-gray-400">Click to replace</p>
+                    </div>
+                  ) : proofFile ? (
+                    <div className="space-y-1">
+                      <p className="text-2xl">📄</p>
+                      <p className="text-sm font-medium text-orange-600">✓ {proofFile.name}</p>
+                      <p className="text-xs text-gray-400">Click to replace</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                      </div>
+                      <p className="text-sm font-medium text-gray-700">Tap to upload screenshot</p>
+                      <p className="text-xs text-gray-400">or drag and drop · JPG, PNG, PDF</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input type="checkbox" checked={giftWrap} onChange={e => setGiftWrap(e.target.checked)} className="mt-0.5 accent-orange-500 w-4 h-4" />
                   <div>
