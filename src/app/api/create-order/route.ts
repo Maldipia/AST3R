@@ -1,9 +1,9 @@
 export const dynamic = 'force-dynamic';
 
 // src/app/api/create-order/route.ts
-// Uses service role key — bypasses RLS entirely
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { sendOrderConfirmation, sendAdminOrderAlert } from '@/lib/email';
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
       sku:      i.sku,
       quantity: i.quantity,
       price:    i.price,
+      size:     i.size || null,
     }));
     const { error: itemErr } = await supabase.from('order_items').insert(items);
     if (itemErr) throw new Error(itemErr.message);
@@ -82,6 +83,38 @@ export async function POST(req: NextRequest) {
         .update({ uses: (promoData.uses || 0) + 1 })
         .eq('code', promoData.code);
     }
+
+    // 6. Send emails (non-blocking — don't fail the order if email fails)
+    const emailOrder = {
+      order_code:     orderCode,
+      customer_name:  orderForm.customer_name,
+      email:          orderForm.email || '',
+      total_amount:   total,
+      subtotal,
+      shipping_fee:   shippingFee,
+      discount:       discount || 0,
+      payment_method: method?.label || method?.type || 'N/A',
+      region:         orderForm.region_label || '',
+      courier:        orderForm.courier || '',
+      address_full:   orderForm.address_full,
+      gift_wrap:      giftWrap || false,
+      gift_message:   giftMsg || '',
+      items: cart.map((i: any) => ({
+        name:     i.name || i.sku,
+        sku:      i.sku,
+        quantity: i.quantity,
+        price:    i.price,
+        size:     i.size || null,
+      })),
+    };
+
+    // Customer confirmation email
+    if (orderForm.email) {
+      sendOrderConfirmation(emailOrder).catch(e => console.error('Customer email failed:', e));
+    }
+
+    // Admin alert email
+    sendAdminOrderAlert(emailOrder).catch(e => console.error('Admin email failed:', e));
 
     return NextResponse.json({ ok: true, order_code: orderCode });
   } catch (err: any) {

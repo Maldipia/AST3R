@@ -172,7 +172,39 @@ export default function CheckoutPage() {
             {/* ── LEFT: Form ── */}
             <div className="lg:col-span-3 space-y-5">
 
-              {/* Personal Info */}
+              {/* Mobile-only order summary */}
+              <div className="lg:hidden bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <details>
+                  <summary className="flex items-center justify-between px-4 py-3.5 cursor-pointer list-none select-none">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                      <span className="text-sm font-medium text-gray-900">Order Summary</span>
+                      <span className="text-xs text-gray-400">{totalItems} item{totalItems !== 1 ? 's' : ''}</span>
+                    </div>
+                    <span className="text-sm font-bold text-brand-orange">{formatPrice(subtotal)}</span>
+                  </summary>
+                  <div className="border-t border-gray-100 px-4 py-3 space-y-3">
+                    {cart.map(item => (
+                      <div key={item.sku + (item.size || '')} className="flex items-center gap-3">
+                        <div className="relative w-12 h-14 bg-gray-100 flex-shrink-0 rounded overflow-hidden">
+                          {item.image_url && <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="48px" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-900 truncate">{item.name}</p>
+                          {item.size && <span className="inline-block mt-0.5 bg-brand-black text-white text-[9px] px-1.5 py-0.5">{item.size}</span>}
+                          <p className="text-[11px] text-gray-400 mt-0.5">× {item.quantity}</p>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-900">{formatPrice(item.price * item.quantity)}</p>
+                      </div>
+                    ))}
+                    <div className="border-t border-gray-100 pt-2 flex justify-between text-xs text-gray-400">
+                      <span>Subtotal</span><span className="font-medium text-gray-700">{formatPrice(subtotal)}</span>
+                    </div>
+                  </div>
+                </details>
+              </div>
+
+              {/* Personal Info */}}
               <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
                 <h2 className="font-semibold text-gray-900">Personal Information</h2>
 
